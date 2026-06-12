@@ -184,32 +184,113 @@
   @media(max-width:760px){#body{flex-direction:column}#side{width:auto;border-left:none;border-top:1px solid #262b36;max-height:46%}}
 </style>
 
+<!-- Firebase SDK (compat build) — provides the cloud backend for shared sync -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
 <script>
+// ===========================================================================
+//  SHARED MULTI-USER SYNC CONFIG
+//  ---------------------------------------------------------------------------
+//  Paste your Firebase Realtime Database config below (Firebase console →
+//  Project settings → Your apps → Web app → SDK setup → Config). Setup steps
+//  are in the README. Until a real config is added, the tool falls back to
+//  per-browser localStorage (no sharing).
+//
+//  These values are PUBLIC by design — security is enforced by your database
+//  rules, not by hiding the config.
+// ===========================================================================
+const firebaseConfig = {
+  apiKey: "PASTE_API_KEY",
+  authDomain: "PASTE_PROJECT.firebaseapp.com",
+  databaseURL: "https://PASTE_PROJECT-default-rtdb.firebaseio.com",
+  projectId: "PASTE_PROJECT",
+  storageBucket: "PASTE_PROJECT.appspot.com",
+  messagingSenderId: "PASTE_SENDER_ID",
+  appId: "PASTE_APP_ID"
+};
+
+// Each "board" is an independent shared project. Everyone who opens the same
+// URL shares the same board. Use a URL hash to run separate boards from one
+// site, e.g.  index.html#siteA  /  index.html#siteB . Defaults to "default".
+const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
+  .replace(/[.#$\[\]\/]/g, '_');
+
 // ---------------------------------------------------------------------------
-// Storage shim: the app was originally built for the Claude Artifacts runtime,
-// which provides a window.storage API. When hosted on a normal website
-// (e.g. GitHub Pages) that API does not exist, so we polyfill it with
-// localStorage. Data persists per-browser. The "shared" flag is ignored —
-// every key maps to the same local store.
+// Storage layer. The app calls window.storage.set/get/delete(key, value, shared)
+// where `shared === true` means the shared cloud board and `false` means the
+// local browser copy. We back "shared" with Firebase (live, multi-user) and
+// always keep a localStorage mirror as an offline fallback.
 // ---------------------------------------------------------------------------
-if (!window.storage) {
+(function () {
+  const cloudCache = Object.create(null);  // safeKey -> latest value string
+  let db = null, fbReady = false;
+  const safeKey = k => String(k).replace(/[.#$\[\]\/:]/g, '_');
+  const path = k => 'boards/' + BOARD_ID + '/' + safeKey(k);
+
+  const configured = firebaseConfig.apiKey &&
+    !String(firebaseConfig.apiKey).startsWith('PASTE');
+
+  if (configured) {
+    try {
+      firebase.initializeApp(firebaseConfig);
+      db = firebase.database();
+      fbReady = true;
+      // Keep a live cache of the shared keys so the app's poll loop reads them
+      // without hitting the network, and changes from other users stream in.
+      ['rpt:data', 'rpt:image'].forEach(k => {
+        db.ref(path(k)).on('value', snap => {
+          const v = snap.val();
+          if (v != null) cloudCache[safeKey(k)] = v;
+        });
+      });
+    } catch (e) {
+      console.warn('Firebase init failed — falling back to local storage.', e);
+      fbReady = false;
+    }
+  } else {
+    console.info('No Firebase config set — using local storage only (no sharing).');
+  }
+
+  window.__INFRA_SYNC__ = { get cloud() { return fbReady; }, board: BOARD_ID };
+
   window.storage = {
-    async set(key, value) {
-      try { localStorage.setItem(key, value); } catch (e) { console.warn('storage.set failed', e); }
+    async set(key, value, shared) {
+      try { localStorage.setItem(key, value); } catch (e) {}
+      if (fbReady && shared !== false) {
+        try {
+          await db.ref(path(key)).set(value);
+          cloudCache[safeKey(key)] = value;
+        } catch (e) { console.warn('cloud set failed', e); }
+      }
       return { value };
     },
-    async get(key) {
+    async get(key, shared) {
+      if (fbReady && shared !== false) {
+        const sk = safeKey(key);
+        if (cloudCache[sk] != null) return { value: cloudCache[sk] };
+        try {
+          const snap = await db.ref(path(key)).once('value');
+          const v = snap.val();
+          if (v != null) { cloudCache[sk] = v; return { value: v }; }
+        } catch (e) {}
+        return null;
+      }
       try {
         const v = localStorage.getItem(key);
         return v == null ? null : { value: v };
       } catch (e) { return null; }
     },
-    async delete(key) {
+    async delete(key, shared) {
       try { localStorage.removeItem(key); } catch (e) {}
+      if (fbReady && shared !== false) {
+        try { await db.ref(path(key)).remove(); delete cloudCache[safeKey(key)]; }
+        catch (e) {}
+      }
       return true;
     }
   };
-}
+})();
 </script>
 
 <script>
