@@ -549,5 +549,118 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
   buildSvcSelect(); loadActiveRefs(); refreshUI(); loadAll();
 })();
 </script>
+
+<script>
+// ===========================================================================
+//  PROJECT SWITCHER
+//  Each project is an isolated shared board, selected by the URL hash
+//  (#project-slug). This adds a toolbar control to create projects and jump
+//  between them, remembering visited projects in this browser. It is fully
+//  self-contained and does not touch the app's internal logic.
+// ===========================================================================
+(function () {
+  const LIST_KEY = 'rpt:projectList';
+  const cur = (window.__INFRA_SYNC__ && window.__INFRA_SYNC__.board) || 'default';
+  const cloudOn = !!(window.__INFRA_SYNC__ && window.__INFRA_SYNC__.cloud);
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const load = () => { try { return JSON.parse(localStorage.getItem(LIST_KEY)) || []; } catch (e) { return []; } };
+  const save = l => { try { localStorage.setItem(LIST_KEY, JSON.stringify(l)); } catch (e) {} };
+  const slugify = s => String(s).toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+  const nameFor = (slug, l) => slug === 'default' ? 'Default project' : ((l.find(p => p.slug === slug) || {}).name || slug);
+
+  // Remember the project we're currently in.
+  let list = load();
+  if (!list.some(p => p.slug === cur)) { list.push({ slug: cur, name: cur === 'default' ? 'Default project' : cur }); save(list); }
+
+  function go(slug) {
+    const hash = (slug && slug !== 'default') ? '#' + slug : '';
+    try { history.replaceState(null, '', location.pathname + location.search + hash); }
+    catch (e) { location.hash = hash; }
+    location.reload();
+  }
+
+  // Toolbar chip.
+  const brand = document.querySelector('#topbar .brand');
+  const chip = document.createElement('button');
+  chip.style.cssText = 'margin-left:10px;font-size:12px;padding:5px 10px;border-radius:8px;border:1px solid #2f3645;background:#1d212b;color:#cbd3e1;cursor:pointer;vertical-align:middle;font-weight:400';
+  chip.textContent = '📁 ' + nameFor(cur, list) + ' ▾';
+  brand.appendChild(chip);
+
+  // Dropdown panel.
+  const panel = document.createElement('div');
+  panel.style.cssText = 'position:fixed;z-index:60;min-width:250px;background:#171b24;border:1px solid #2c3341;border-radius:12px;padding:10px;box-shadow:0 10px 30px rgba(0,0,0,.5);display:none';
+  document.body.appendChild(panel);
+
+  function buildPanel() {
+    list = load();
+    panel.innerHTML = '';
+    const head = document.createElement('div');
+    head.textContent = 'Switch project';
+    head.style.cssText = 'font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:#7f8a9c;margin:2px 4px 8px;font-weight:600';
+    panel.appendChild(head);
+
+    list.slice().sort((a, b) => a.name.localeCompare(b.name)).forEach(p => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer;font-size:13px;color:#e5e7eb';
+      row.onmouseenter = () => row.style.background = '#222a37';
+      row.onmouseleave = () => row.style.background = '';
+      const label = document.createElement('span');
+      label.style.flex = '1';
+      label.innerHTML = (p.slug === cur ? '● ' : '') + esc(p.name);
+      row.appendChild(label);
+      if (p.slug !== cur) {
+        const del = document.createElement('span');
+        del.textContent = '×';
+        del.title = 'Remove from this list (the shared board itself is NOT deleted)';
+        del.style.cssText = 'color:#7c8696;padding:0 4px';
+        del.onclick = ev => { ev.stopPropagation(); save(load().filter(x => x.slug !== p.slug)); buildPanel(); };
+        row.appendChild(del);
+        row.onclick = () => go(p.slug);
+      }
+      panel.appendChild(row);
+    });
+
+    const hr = document.createElement('div');
+    hr.style.cssText = 'height:1px;background:#242a36;margin:8px 4px';
+    panel.appendChild(hr);
+
+    const lbl = document.createElement('div');
+    lbl.textContent = 'New project';
+    lbl.style.cssText = 'font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:#7f8a9c;margin:2px 4px 6px;font-weight:600';
+    panel.appendChild(lbl);
+
+    const inp = document.createElement('input');
+    inp.placeholder = 'Project name…';
+    inp.style.cssText = 'width:100%;background:#0f1218;border:1px solid #2c3341;border-radius:8px;color:#e5e7eb;padding:8px 10px;font:inherit;font-size:13px;margin-bottom:8px;box-sizing:border-box';
+    panel.appendChild(inp);
+
+    const btn = document.createElement('button');
+    btn.textContent = 'Create & open';
+    btn.style.cssText = 'width:100%;font-size:13px;padding:8px;border-radius:8px;border:1px solid #1f5135;background:#11271a;color:#86efac;cursor:pointer';
+    function create() {
+      const nm = inp.value.trim(); if (!nm) return;
+      const slug = slugify(nm); if (!slug) return;
+      const nl = load();
+      if (slug !== 'default' && !nl.some(x => x.slug === slug)) { nl.push({ slug, name: nm }); save(nl); }
+      go(slug);
+    }
+    btn.onclick = create;
+    inp.onkeydown = e => { if (e.key === 'Enter') create(); };
+    panel.appendChild(btn);
+
+    const foot = document.createElement('div');
+    foot.style.cssText = 'font-size:11px;color:#7f8a9c;margin:9px 4px 1px';
+    foot.textContent = cloudOn ? '🟢 Live sync on — boards are shared' : '⚪ Local only — no shared sync';
+    panel.appendChild(foot);
+  }
+
+  let open = false;
+  function place() { const r = chip.getBoundingClientRect(); panel.style.left = r.left + 'px'; panel.style.top = (r.bottom + 6) + 'px'; }
+  function toggle(show) { open = show == null ? !open : show; if (open) { buildPanel(); place(); panel.style.display = 'block'; } else panel.style.display = 'none'; }
+  chip.onclick = e => { e.stopPropagation(); toggle(); };
+  document.addEventListener('click', e => { if (open && !panel.contains(e.target) && e.target !== chip) toggle(false); });
+  window.addEventListener('resize', () => { if (open) place(); });
+})();
+</script>
 </body>
 </html>

@@ -64,14 +64,23 @@ Near the top of `index.html` find the `const firebaseConfig = { ... }` block and
 
 That's it — open the published site in two browsers and you'll see progress sync between them.
 
-### Separate boards / projects
+### Multiple projects (separate boards)
 
-Everyone who opens the **same URL** shares the **same board**. To run several independent boards from one site, add a hash to the URL:
+The tool is reusable across many projects from the **same hosted site** — no need to copy or redeploy. Each project is an isolated shared board.
 
-- `https://<user>.github.io/<repo>/#siteA`
-- `https://<user>.github.io/<repo>/#siteB`
+Use the **📁 project switcher** in the toolbar (next to the title) to:
 
-Each hash is its own isolated board. No hash = the `default` board. Share the specific link with the people who should collaborate on that board.
+- See which project you're currently in
+- **Create a new project** (starts completely blank — your own "raw" copy)
+- Jump between projects you've opened before
+
+Under the hood each project is just a URL hash, so you can also share a direct link to a specific project:
+
+- `https://<user>.github.io/<repo>/` — the **Default project**
+- `https://<user>.github.io/<repo>/#marina-towers`
+- `https://<user>.github.io/<repo>/#site-b`
+
+Everyone who opens the **same link** collaborates on that board; different projects never mix. Share each project's link with the people who should work on it. The switcher remembers projects per-browser; removing one from the list does **not** delete the shared board — anyone with the link can still open it.
 
 ## How sync behaves
 
