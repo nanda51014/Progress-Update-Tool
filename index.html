@@ -12,7 +12,10 @@
 <div id="app">
   <div id="topbar">
     <div class="brand">Infrastructure Progress Layout</div>
+    <div class="who" id="whoLbl"></div>
     <div class="tools">
+      <button id="btnMode">✎ Editing</button>
+      <div class="sep"></div>
       <button id="btnLoad">Load drawing</button>
       <div class="svcWrap">Layout
         <select id="layer1"></select>
@@ -28,6 +31,8 @@
       <div class="sep"></div>
       <button id="btnSync">Sync</button>
       <button id="btnExport" disabled>Export PNG</button>
+      <button id="btnReport">Report (PDF)</button>
+      <button id="btnCsv">Export CSV</button>
       <div class="grow"></div>
       <button id="btnReset" class="danger">Reset</button>
       <input type="file" id="fileInput" accept="image/*" hidden>
@@ -56,6 +61,16 @@
         <div class="barOuter"><div class="barInner" id="overallBar"></div></div>
         <div class="muted" id="overallSub">No progress yet</div>
         <div class="splitRow" id="splitRow"></div>
+      </div>
+      <div class="card" id="qtyCard">
+        <div class="ctitle">Installed quantity</div>
+        <div class="bigpct" id="qtyVal" style="font-size:24px">—</div>
+        <div class="barOuter"><div class="barInner" id="qtyBar"></div></div>
+        <div class="muted" id="qtySub"></div>
+        <div class="qtyset">
+          <label>Target<input id="qtyTarget" type="number" min="0" step="1" placeholder="—"></label>
+          <label>Unit<input id="qtyUnit" type="text" placeholder="m"></label>
+        </div>
       </div>
       <div class="card">
         <div class="ctitle" id="legendTitle">Stage legend</div>
@@ -110,6 +125,16 @@
       <div class="mbtns"><button id="cfNo" class="ghost">Cancel</button><button id="cfYes" class="danger">Confirm</button></div>
     </div>
   </div>
+
+  <div id="prompt" class="ov hidden">
+    <div class="mbox">
+      <div class="mtitle" id="pmTitle">Your name</div>
+      <div class="muted" id="pmMsg" style="margin-bottom:10px;font-size:12.5px;line-height:1.45"></div>
+      <input id="pmInput" type="text" autocomplete="name">
+      <div class="merr" id="pmErr"></div>
+      <div class="mbtns"><button id="pmCancel" class="ghost">Cancel</button><button id="pmOk">Save</button></div>
+    </div>
+  </div>
 </div>
 
 <style>
@@ -120,6 +145,15 @@
   .tools{display:flex;flex-direction:column;gap:8px;flex:1}
   .tools .grow{flex:1;min-height:8px}
   .tools .sep{height:1px;background:#eceef1;margin:4px 0}
+  .who{font-size:11.5px;color:#6b7280;margin-bottom:12px;cursor:pointer;word-break:break-word}
+  .who:hover{color:#374151}
+  #btnMode{border-color:#bbf7d0;color:#15803d;background:#f0fdf4;font-weight:600}
+  #btnMode.modeView{border-color:#fde68a;color:#92400e;background:#fffbeb}
+  .qtyset{display:flex;gap:8px;margin-top:12px}
+  .qtyset label{flex:1;display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:#6b7280}
+  .qtyset input{width:100%;margin-top:4px;background:#ffffff;border:1px solid #d1d5db;border-radius:7px;color:#1f2937;padding:6px 8px;font:inherit;font-size:13px}
+  .qtyset input:disabled{background:#f3f4f6;color:#9aa1ac}
+  #pmInput{display:block;width:100%;background:#ffffff;border:1px solid #d1d5db;border-radius:8px;color:#1f2937;padding:8px 10px;font:inherit;font-size:13px}
   button{font:inherit;font-size:13px;padding:8px 12px;border-radius:8px;border:1px solid #d1d5db;background:#ffffff;color:#374151;cursor:pointer;transition:.12s;text-align:left}
   button:hover:not(:disabled){background:#f3f4f6;border-color:#c2c8d0}
   button:disabled{opacity:.45;cursor:not-allowed}
@@ -429,12 +463,16 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
   function onLayer2(){ const node=LAYOUT[+$('layer1').value].children[+$('layer2').value]; switchService(node.children?firstLeaf(node):node.service); }
   function onLayer3(){ const node=LAYOUT[+$('layer1').value].children[+$('layer2').value].children[+$('layer3').value]; switchService(node.service); }
 
-  function emptyServices(){ const o={}; SERVICES.forEach(s=>o[s.key]={routes:[],entries:[]}); return o; }
+  function emptyServices(){ const o={}; SERVICES.forEach(s=>o[s.key]={routes:[],entries:[],target:null}); return o; }
+  function commitActive(){ if(active&&active!=='none'&&services[active]){ services[active].routes=routes; services[active].entries=entries; } }
   let services=emptyServices();
   let active='roadworks';
   let routes=[], entries=[];
   let curStages=[], curColors=[], curMax=1;
   let showLabels=true;
+  let userName=(()=>{try{return (localStorage.getItem('rpt:user')||'').trim();}catch(e){return '';}})();
+  let editMode=(()=>{try{return localStorage.getItem('rpt:editmode')!=='0';}catch(e){return true;}})();
+  const isCountSvc=k=>/_(mh|ch|fnd)$/.test(k);
   let img=null, imgUrl=null;
   let scale=1, offX=0, offY=0;
   let mode='idle', trace=null, pick=null, curSide='B', eseq=1, lastDataStr=null;
@@ -453,7 +491,7 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
   function applyData(o,keepActive){
     showLabels= typeof o.showLabels==='boolean'?o.showLabels:showLabels;
     services=emptyServices();
-    if(o.services){ Object.keys(o.services).forEach(k=>{ if(services[k])services[k]={routes:o.services[k].routes||[],entries:o.services[k].entries||[]}; }); }
+    if(o.services){ Object.keys(o.services).forEach(k=>{ if(services[k])services[k]={routes:o.services[k].routes||[],entries:o.services[k].entries||[],target:o.services[k].target||null}; }); }
     else { services['roadworks']={routes:o.routes||[], entries:(o.entries||legacyEntries(o))}; }
     let mx=0; Object.values(services).forEach(s=>s.entries.forEach(e=>{ const n=parseInt(String(e.id).slice(1))||0; if(n>mx)mx=n; })); eseq=mx+1;
     const want = keepActive? active : ((o.active && (o.active==='none'||services[o.active]))?o.active:'roadworks');
@@ -468,8 +506,8 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
     const ok=await probeShared(); if(!ok){ const w=document.querySelector('.esub'); if(w)w.textContent='Saving is disabled in this browser — local storage is unavailable. Your routes and progress will not persist after you close the tab.'; showBar('Storage unavailable — changes will NOT be saved in this browser.',[['OK',hideBar,true]]); }
   }
   async function syncNow(){ showSpin(true,'Syncing…'); const ok=await probeShared(); if(!ok){ showSpin(false); flashBar('Local storage is unavailable in this browser'); return; } let got=false; try{ const d=await window.storage.get(DATA_KEY,true); if(d&&d.value){ lastDataStr=d.value; applyData(JSON.parse(d.value),true); got=true; } }catch(e){} try{ const im=await window.storage.get(IMG_KEY,true); if(im&&im.value&&im.value!==imgUrl) await setImage(im.value,false); }catch(e){} showSpin(false); refreshUI(); render(); flashBar(got?('Loaded · '+routes.length+' routes · '+entries.length+' entries on '+(svcOf(active)?svcOf(active).name:'—')):'No saved data found'); }
-  async function saveData(){ if(active&&active!=='none')services[active]={routes,entries}; const s=JSON.stringify({active,showLabels,services}); lastDataStr=s; try{ await window.storage.set(DATA_KEY,s,true);}catch(e){} try{ await window.storage.set(DATA_KEY,s,false);}catch(e){} }
-  function mkEntry(side,from,to,stage,date,routeId){ const s=eseq++; return {id:'e'+s,seq:s,routeId,side,from,to,stage,date:date||null}; }
+  async function saveData(){ commitActive(); const s=JSON.stringify({active,showLabels,services}); lastDataStr=s; try{ await window.storage.set(DATA_KEY,s,true);}catch(e){} try{ await window.storage.set(DATA_KEY,s,false);}catch(e){} }
+  function mkEntry(side,from,to,stage,date,routeId,by){ const s=eseq++; return {id:'e'+s,seq:s,routeId,side,from,to,stage,date:date||null,by:by||null}; }
 
   // ---------- image ----------
   const readFile=f=>new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=()=>rej(r.error); r.readAsDataURL(f); });
@@ -539,7 +577,7 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
   const hideReadout=()=>$('readout').classList.add('hidden');
 
   // ---------- service switch ----------
-  function switchService(key){ if(mode!=='idle'){ cancelTrace(); cancelPick(); } if(active&&active!=='none')services[active]={routes,entries}; active=key; loadActiveRefs(); saveData(); refreshUI(); render(); syncControls(); }
+  function switchService(key){ if(mode!=='idle'){ cancelTrace(); cancelPick(); } commitActive(); active=key; loadActiveRefs(); saveData(); refreshUI(); render(); syncControls(); }
 
   // ---------- routes ----------
   function startRoute(){ const s=svcOf(active); $('routeTitle').textContent='New '+(s?s.name:'')+' route'; $('rErr').textContent=''; $('rName').value=''; $('routeModal').classList.remove('hidden'); $('rName').focus(); }
@@ -547,7 +585,7 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
   function updateTraceMsg(){ const n=trace?trace.points.length:0; $('barMsg').textContent=n<2?('Click along the centreline. Points: '+n+' (need ≥2).'):('Points: '+n+'. Add more or finish.'); }
   function undoTrace(){ if(trace&&trace.points.length){trace.points.pop();updateTraceMsg();render();} }
   function cancelTrace(){ if(mode!=='trace')return; mode='idle'; trace=null; hideBar(); cv.classList.remove('picking'); render(); }
-  function finishTrace(){ if(!trace||trace.points.length<2){updateTraceMsg();return;} routes.push({id:trace.id,name:trace.name,start:trace.start,end:trace.end,points:trace.points}); mode='idle'; trace=null; hideBar(); cv.classList.remove('picking'); saveData(); refreshUI(); render(); }
+  function finishTrace(){ if(!trace||trace.points.length<2){updateTraceMsg();return;} routes.push({id:trace.id,name:trace.name,start:trace.start,end:trace.end,points:trace.points,by:userName||null,createdAt:new Date().toISOString().slice(0,10)}); mode='idle'; trace=null; hideBar(); cv.classList.remove('picking'); saveData(); refreshUI(); render(); }
   async function deleteRoute(id){ if(!await uiConfirm('Delete route','Delete this route and all its progress entries on '+(svcOf(active).name)+'? This cannot be undone.'))return; routes=services[active].routes=routes.filter(r=>r.id!==id); entries=services[active].entries=entries.filter(e=>e.routeId!==id); saveData(); refreshUI(); render(); }
   async function resetRoute(id){ if(!await uiConfirm('Reset route','Clear all progress entries on this route?'))return; entries=services[active].entries=entries.filter(e=>e.routeId!==id); saveData(); refreshUI(); render(); }
 
@@ -565,7 +603,7 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
     $('modal').classList.remove('hidden');
   }
   function setSide(s){ curSide=s; [...$('mSide').children].forEach(b=>b.classList.toggle('on',b.dataset.s===s)); }
-  function saveEntry(){ const routeId=$('mRoute').value; const r=routes.find(x=>x.id===routeId); let from=parseFloat($('mFrom').value),to=parseFloat($('mTo').value); const stage=parseInt($('mStage').value); if(isNaN(from)||isNaN(to)){$('mErr').textContent='Enter both chainages.';return;} from=clamp(from,r.start,r.end); to=clamp(to,r.start,r.end); if(Math.abs(to-from)<0.5){$('mErr').textContent='From and To must differ.';return;} if(to<from){const t=from;from=to;to=t;} const side=isDual()?curSide:'C'; entries.push(mkEntry(side,from,to,stage,new Date().toISOString().slice(0,10),routeId)); $('modal').classList.add('hidden'); saveData(); refreshUI(); render(); }
+  function saveEntry(){ const routeId=$('mRoute').value; const r=routes.find(x=>x.id===routeId); let from=parseFloat($('mFrom').value),to=parseFloat($('mTo').value); const stage=parseInt($('mStage').value); if(isNaN(from)||isNaN(to)){$('mErr').textContent='Enter both chainages.';return;} from=clamp(from,r.start,r.end); to=clamp(to,r.start,r.end); if(Math.abs(to-from)<0.5){$('mErr').textContent='From and To must differ.';return;} if(to<from){const t=from;from=to;to=t;} const side=isDual()?curSide:'C'; entries.push(mkEntry(side,from,to,stage,new Date().toISOString().slice(0,10),routeId,userName)); $('modal').classList.add('hidden'); saveData(); refreshUI(); render(); }
   function startPick(){ const pre={routeId:$('mRoute').value,side:curSide,from:$('mFrom').value?parseFloat($('mFrom').value):null,to:$('mTo').value?parseFloat($('mTo').value):null,stage:parseInt($('mStage').value)}; pick={step:1,pending:pre,routeId:null,from:null,fromPt:null}; mode='pick'; $('modal').classList.add('hidden'); cv.classList.add('picking'); showBar('Click the START point on the route.',[['Cancel',cancelPick,true]]); }
   function doPick(ip){ const pr=projNearest(ip); if(!pr)return; if(pick.step===1){ pick.routeId=pr.routeId; pick.from=pr.ch; pick.fromPt={x:pr.x,y:pr.y}; pick.step=2; $('barMsg').textContent='Start '+station(pr.ch)+' set. Now click the END point.'; render(); } else { const r=routes.find(x=>x.id===pick.routeId); const pr2=projOnRoute(r,ip); const pre=pick.pending; pre.routeId=pick.routeId; pre.from=pick.from; pre.to=pr2.ch; mode='idle'; cv.classList.remove('picking'); hideBar(); pick=null; render(); openUpdate(pre); } }
   function cancelPick(){ if(mode!=='pick')return; const pre=pick?pick.pending:null; mode='idle'; pick=null; cv.classList.remove('picking'); hideBar(); render(); openUpdate(pre); }
@@ -577,6 +615,67 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
   let barTimer=null; function flashBar(msg){ if(mode!=='idle')return; $('barMsg').textContent=msg; $('barBtns').innerHTML=''; $('bar').classList.remove('hidden'); clearTimeout(barTimer); barTimer=setTimeout(()=>$('bar').classList.add('hidden'),2600); }
   function uiConfirm(title,msg){ return new Promise(res=>{ $('cfTitle').textContent=title; $('cfMsg').textContent=msg; $('cfYes').textContent='Confirm'; $('cfYes').className='danger'; $('cfNo').classList.remove('hidden'); $('confirm').classList.remove('hidden'); const done=v=>{ $('confirm').classList.add('hidden'); res(v); }; $('cfYes').onclick=()=>done(true); $('cfNo').onclick=()=>done(false); }); }
   function uiAlert(title,msg){ $('cfTitle').textContent=title; $('cfMsg').textContent=msg; $('cfYes').textContent='OK'; $('cfYes').className=''; $('cfNo').classList.add('hidden'); $('confirm').classList.remove('hidden'); $('cfYes').onclick=()=>$('confirm').classList.add('hidden'); }
+  function uiPrompt(title,msg,val){ return new Promise(res=>{ $('pmTitle').textContent=title; $('pmMsg').textContent=msg||''; $('pmErr').textContent=''; const i=$('pmInput'); i.value=val||''; $('prompt').classList.remove('hidden'); setTimeout(()=>{i.focus();i.select();},30); const done=v=>{ $('prompt').classList.add('hidden'); i.onkeydown=null; res(v); }; $('pmOk').onclick=()=>done(i.value.trim()); $('pmCancel').onclick=()=>done(null); i.onkeydown=e=>{ if(e.key==='Enter')done(i.value.trim()); else if(e.key==='Escape')done(null); }; }); }
+
+  // ---------- identity / roles (#4) ----------
+  function renderWho(){ $('whoLbl').textContent='👤 '+(userName?userName:'Set your name…'); }
+  function setUserName(n){ userName=(n||'').trim(); try{ localStorage.setItem('rpt:user',userName); }catch(e){} renderWho(); }
+  async function requireName(){ if(userName)return true; const n=await uiPrompt('Your name','Enter your name so progress updates are attributed to you.',''); if(n==null||!n.trim())return false; setUserName(n); return true; }
+  function applyEditMode(){ $('btnMode').textContent= editMode?'✎ Editing':'👁 Viewing'; $('btnMode').classList.toggle('modeView',!editMode); syncControls(); refreshUI(); }
+  function setEditMode(v){ editMode=v; try{ localStorage.setItem('rpt:editmode',v?'1':'0'); }catch(e){} applyEditMode(); }
+  async function toggleMode(){ if(!editMode){ if(!await requireName())return; } setEditMode(!editMode); }
+
+  // ---------- target quantity (#3) ----------
+  function saveTarget(){ if(active==='none'||!services[active])return; const q=$('qtyTarget').value, u=$('qtyUnit').value.trim(); services[active].target={qty: q===''?null:Number(q), unit:u||null}; saveData(); refreshUI(); }
+  const fmtN=n=>Math.round(n||0).toLocaleString();
+
+  // run fn with globals temporarily pointed at another layer, then restore
+  function withLayer(key,fn){ const sv={active,routes,entries,curStages,curColors,curMax}; active=key; loadActiveRefs(); const r=fn(); active=sv.active; routes=sv.routes; entries=sv.entries; curStages=sv.curStages; curColors=sv.curColors; curMax=sv.curMax; return r; }
+
+  // ---------- reporting (#5) ----------
+  const sideLabel=s=> s==='B'?'Both':s==='L'?'LHS':s==='R'?'RHS':'';
+  function exportCsv(){ const rows=[['Layer','Route','Side','From (m)','To (m)','Length (m)','Activity','Date','By']]; Object.keys(services).forEach(key=>{ const s=svcOf(key), d=services[key]; if(!s||!d)return; (d.entries||[]).forEach(e=>{ const r=(d.routes||[]).find(x=>x.id===e.routeId); const stg= e.stage===0?'Cleared (Not started)':((s.stages[e.stage])||('Stage '+e.stage)); rows.push([s.name, r?r.name:'?', sideLabel(e.side), Math.round(Math.min(e.from,e.to)), Math.round(Math.max(e.from,e.to)), Math.round(Math.abs(e.to-e.from)), stg, e.date||'', e.by||'']); }); }); const cell=v=>{ v=String(v==null?'':v); return /[",\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }; const csv=rows.map(r=>r.map(cell).join(',')).join('\r\n'); triggerDownload('infra-progress-'+new Date().toISOString().slice(0,10)+'.csv','data:text/csv;charset=utf-8,'+encodeURIComponent('﻿'+csv)); }
+  function layerSummary(){ const out=[]; Object.keys(services).forEach(key=>{ const d=services[key]; if(!d||!(d.routes&&d.routes.length))return; const C=withLayer(key,()=>computeAll()); out.push({name:svcOf(key).name, routes:d.routes.length, overall:C.overall, total:C.total}); }); return out; }
+  function openReport(){
+    const today=new Date().toISOString().slice(0,10);
+    const board=(window.__INFRA_SYNC__&&window.__INFRA_SYNC__.board)||'default';
+    const w=window.open('','_blank'); if(!w){ flashBar('Allow pop-ups to open the report'); return; }
+    const summary=layerSummary();
+    let body='';
+    body+='<h1>Infrastructure Progress Report</h1>';
+    body+='<div class="meta">Project board: <b>'+esc(board)+'</b> &nbsp;·&nbsp; Date: <b>'+today+'</b> &nbsp;·&nbsp; Prepared by: <b>'+esc(userName||'—')+'</b></div>';
+    body+='<h2>All layers summary</h2>';
+    if(!summary.length) body+='<p class="muted">No progress recorded yet.</p>';
+    else{ body+='<table><tr><th>Layer</th><th class="r">Routes</th><th class="r">Length (m)</th><th class="r">Overall %</th></tr>'; summary.forEach(s=>{ body+='<tr><td>'+esc(s.name)+'</td><td class="r">'+s.routes+'</td><td class="r">'+fmtN(s.total)+'</td><td class="r">'+s.overall.toFixed(1)+'%</td></tr>'; }); body+='</table>'; }
+    if(active!=='none'){
+      const svc=svcOf(active), C=computeAll();
+      const isCnt=isCountSvc(active), finalLen=C.stageLen[curMax]||0, finalCount=entries.filter(e=>e.stage===curMax).length;
+      const installed=isCnt?finalCount:finalLen, tgt=services[active].target||{}, unit=(tgt.unit&&tgt.unit.trim())||(isCnt?'no.':'m');
+      const tq=(tgt.qty!=null&&tgt.qty!=='')?Number(tgt.qty):null;
+      body+='<h2>'+esc(svc.name)+' — detail</h2>';
+      body+='<div class="kpis"><div class="kpi"><div class="kv">'+(C.total?C.overall.toFixed(1)+'%':'—')+'</div><div class="kl">Overall (weighted)</div></div>';
+      body+='<div class="kpi"><div class="kv">'+fmtN(installed)+(tq!=null?(' / '+fmtN(tq)):'')+' '+esc(unit)+'</div><div class="kl">Installed (complete)</div></div>';
+      if(C.dual&&C.total){ body+='<div class="kpi"><div class="kv">'+C.L.toFixed(0)+'% / '+C.R.toFixed(0)+'%</div><div class="kl">LHS / RHS</div></div>'; }
+      body+='</div>';
+      body+='<h3>Activities</h3><table><tr><th>Activity</th><th class="r">Metres</th></tr>'; curStages.forEach((n,i)=>{ body+='<tr><td><span class="sw" style="background:'+curColors[i]+'"></span>'+esc(n)+'</td><td class="r">'+fmtN(C.stageLen[i]||0)+'</td></tr>'; }); body+='</table>';
+      body+='<h3>Routes</h3><table><tr><th>Route</th><th>From → To</th><th class="r">Length (m)</th><th class="r">Progress</th></tr>'; routes.forEach(r=>{ body+='<tr><td>'+esc(r.name)+'</td><td>'+station(r.start)+' → '+station(r.end)+'</td><td class="r">'+fmtN(r.end-r.start)+'</td><td class="r">'+C.pcRoute(r.id).toFixed(0)+'%</td></tr>'; }); if(!routes.length)body+='<tr><td colspan="4" class="muted">No routes.</td></tr>'; body+='</table>';
+      const cnv=buildAnnotatedCanvas(); if(cnv){ body+='<h3>Annotated drawing</h3><img class="dwg" src="'+cnv.toDataURL('image/png')+'">'; }
+      const sorted=[...entries].sort((a,b)=>{ if(a.routeId!==b.routeId)return a.routeId<b.routeId?-1:1; return Math.min(a.from,a.to)-Math.min(b.from,b.to); });
+      body+='<h3>Progress log</h3><table><tr><th>Route</th><th>Side</th><th>Chainage</th><th>Activity</th><th>Date</th><th>By</th></tr>'; sorted.forEach(e=>{ const r=routes.find(x=>x.id===e.routeId); const act=e.stage===0?'Cleared':(curStages[e.stage]||('Stage '+e.stage)); body+='<tr><td>'+esc(r?r.name:'?')+'</td><td>'+(sideLabel(e.side)||'—')+'</td><td>'+station(Math.min(e.from,e.to))+' → '+station(Math.max(e.from,e.to))+'</td><td>'+esc(act)+'</td><td>'+(e.date||'')+'</td><td>'+esc(e.by||'')+'</td></tr>'; }); if(!sorted.length)body+='<tr><td colspan="6" class="muted">No entries.</td></tr>'; body+='</table>';
+    }
+    const html='<!DOCTYPE html><html><head><meta charset="utf-8"><title>Progress Report — '+today+'</title><style>'
+      +'body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#1f2937;margin:0;padding:28px;max-width:980px}'
+      +'h1{font-size:22px;margin:0 0 4px}h2{font-size:16px;margin:26px 0 8px;border-bottom:1px solid #e5e7eb;padding-bottom:4px}h3{font-size:13.5px;margin:18px 0 6px;color:#374151}'
+      +'.meta{color:#6b7280;font-size:12.5px;margin-bottom:8px}.muted{color:#9aa1ac}'
+      +'table{border-collapse:collapse;width:100%;font-size:12px;margin:4px 0 8px}th,td{border:1px solid #e5e7eb;padding:5px 8px;text-align:left}th{background:#f9fafb}td.r,th.r{text-align:right}'
+      +'.sw{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px;border:1px solid rgba(0,0,0,.1)}'
+      +'.kpis{display:flex;gap:12px;flex-wrap:wrap;margin:8px 0}.kpi{border:1px solid #e5e7eb;border-radius:10px;padding:10px 14px;min-width:140px}.kv{font-size:20px;font-weight:700}.kl{font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px}'
+      +'.dwg{max-width:100%;border:1px solid #e5e7eb;border-radius:8px}'
+      +'.bar{margin-bottom:16px}button{font:inherit;font-size:13px;padding:8px 14px;border-radius:8px;border:1px solid #2563eb;background:#2563eb;color:#fff;cursor:pointer}'
+      +'@media print{.no-print{display:none}body{padding:0}}'
+      +'</style></head><body><div class="bar no-print"><button onclick="window.print()">🖨 Print / Save as PDF</button></div>'+body+'</body></html>';
+    w.document.write(html); w.document.close();
+  }
 
   // ---------- UI ----------
   function refreshUI(){
@@ -587,6 +686,7 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
       $('overallPct').textContent='—'; $('overallBar').style.width='0%'; $('overallSub').textContent='Base layout — no service selected'; $('splitRow').innerHTML='';
       $('legend').innerHTML='<div class="muted">Pick a service from the top bar to view and log progress.</div>';
       $('routeList').innerHTML='<div class="muted">No service selected.</div>'; $('logList').innerHTML='<div class="muted">—</div>';
+      $('qtyCard').style.display='none';
       $('btnLabels').textContent='Labels: '+(showLabels?'on':'off'); return;
     }
     $('overallTitle').textContent=svc.name+' — overall';
@@ -597,27 +697,38 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
     $('overallBar').style.width=(C.total?C.overall:0)+'%';
     let rl=0; routes.forEach(r=>rl+=(r.end-r.start)); $('overallSub').textContent= routes.length? (routes.length+' route'+(routes.length>1?'s':'')+' · '+rl+' m · '+entries.length+' entries'):'No routes yet';
     $('splitRow').innerHTML= (C.dual&&C.total)? ('<div class="sb"><div class="k">LHS</div><div class="v">'+C.L.toFixed(0)+'%</div></div><div class="sb"><div class="k">RHS</div><div class="v">'+C.R.toFixed(0)+'%</div></div>'):'';
+    // ----- installed quantity vs target (#3) -----
+    $('qtyCard').style.display='';
+    const isCnt=isCountSvc(active), finalLen=C.stageLen[curMax]||0, finalCount=entries.filter(e=>e.stage===curMax).length;
+    const installed=isCnt?finalCount:finalLen, tgt=services[active].target||{}, defUnit=isCnt?'no.':'m', unit=(tgt.unit&&tgt.unit.trim())||defUnit;
+    const tq=(tgt.qty!=null&&tgt.qty!=='')?Number(tgt.qty):null;
+    $('qtyVal').textContent= (tq!=null&&tq>0)? (fmtN(installed)+' / '+fmtN(tq)+' '+unit) : (fmtN(installed)+' '+unit);
+    $('qtyBar').style.width= (tq!=null&&tq>0)? clamp(installed/tq*100,0,100)+'%' : '0%';
+    $('qtySub').textContent= isCnt? 'Items at final “'+(curStages[curMax]||'Complete')+'” stage'+(tq!=null&&tq>0?(' · '+(installed/tq*100).toFixed(0)+'% of target'):'') : 'Metres fully complete'+(tq!=null&&tq>0?(' · '+(installed/tq*100).toFixed(0)+'% of target'):'');
+    $('qtyTarget').value= tq!=null? tq : ''; $('qtyUnit').value= tgt.unit||''; $('qtyUnit').placeholder=defUnit;
+    $('qtyTarget').disabled=!editMode; $('qtyUnit').disabled=!editMode;
     const rlst=$('routeList');
     if(!routes.length) rlst.innerHTML='<div class="muted">No routes yet. Click “+ Add route”.</div>';
-    else{ rlst.innerHTML=''; routes.forEach(r=>{ const el=document.createElement('div'); el.className='ritem'; const meta= C.dual? (station(r.start)+' → '+station(r.end)+' · L '+C.pcL(r.id).toFixed(0)+'% / R '+C.pcR(r.id).toFixed(0)+'% · '+C.pcRoute(r.id).toFixed(0)+'%') : (station(r.start)+' → '+station(r.end)+' · '+C.pcRoute(r.id).toFixed(0)+'%'); el.innerHTML='<div class="rn">'+esc(r.name)+'</div><div class="rm">'+meta+'</div>'; const bb=document.createElement('div'); bb.className='rb'; const b1=document.createElement('button'); b1.textContent='Reset'; b1.onclick=()=>resetRoute(r.id); const b2=document.createElement('button'); b2.className='danger'; b2.textContent='Delete'; b2.onclick=()=>deleteRoute(r.id); bb.append(b1,b2); el.appendChild(bb); rlst.appendChild(el); }); }
+    else{ rlst.innerHTML=''; routes.forEach(r=>{ const el=document.createElement('div'); el.className='ritem'; const meta= C.dual? (station(r.start)+' → '+station(r.end)+' · L '+C.pcL(r.id).toFixed(0)+'% / R '+C.pcR(r.id).toFixed(0)+'% · '+C.pcRoute(r.id).toFixed(0)+'%') : (station(r.start)+' → '+station(r.end)+' · '+C.pcRoute(r.id).toFixed(0)+'%'); el.innerHTML='<div class="rn">'+esc(r.name)+'</div><div class="rm">'+meta+'</div>'; if(editMode){ const bb=document.createElement('div'); bb.className='rb'; const b1=document.createElement('button'); b1.textContent='Reset'; b1.onclick=()=>resetRoute(r.id); const b2=document.createElement('button'); b2.className='danger'; b2.textContent='Delete'; b2.onclick=()=>deleteRoute(r.id); bb.append(b1,b2); el.appendChild(bb); } rlst.appendChild(el); }); }
     const log=$('logList'); const sorted=[...entries].sort((a,b)=>{ if(a.routeId!==b.routeId)return a.routeId<b.routeId?-1:1; return Math.min(a.from,a.to)-Math.min(b.from,b.to); });
     if(!sorted.length) log.innerHTML='<div class="muted">No entries yet. Click “Update progress”.</div>';
-    else{ log.innerHTML=''; sorted.forEach(e=>{ const r=routes.find(x=>x.id===e.routeId); const sl=e.side==='C'?'':(e.side==='B'?'Both':(e.side==='L'?'LHS':(e.side==='R'?'RHS':''))); const act=e.stage===0?'Cleared (Not started)':(curStages[e.stage]||('Stage '+e.stage)); const it=document.createElement('div'); it.className='logItem'; it.innerHTML='<span class="logDot" style="background:'+(curColors[e.stage]||'#888')+'"></span><div class="logTxt"><span class="lr">'+esc(r?r.name:'?')+(sl?' · '+sl:'')+'</span><div class="lm">'+station(Math.min(e.from,e.to))+' → '+station(Math.max(e.from,e.to))+' · '+act+(e.date?' · '+e.date:'')+'</div></div>'; const x=document.createElement('button'); x.className='logDel'; x.textContent='×'; x.title='Delete entry'; x.onclick=()=>deleteEntry(e.id); it.appendChild(x); log.appendChild(it); }); }
+    else{ log.innerHTML=''; sorted.forEach(e=>{ const r=routes.find(x=>x.id===e.routeId); const sl=e.side==='C'?'':(e.side==='B'?'Both':(e.side==='L'?'LHS':(e.side==='R'?'RHS':''))); const act=e.stage===0?'Cleared (Not started)':(curStages[e.stage]||('Stage '+e.stage)); const it=document.createElement('div'); it.className='logItem'; it.innerHTML='<span class="logDot" style="background:'+(curColors[e.stage]||'#888')+'"></span><div class="logTxt"><span class="lr">'+esc(r?r.name:'?')+(sl?' · '+sl:'')+'</span><div class="lm">'+station(Math.min(e.from,e.to))+' → '+station(Math.max(e.from,e.to))+' · '+act+(e.date?' · '+e.date:'')+(e.by?' · '+esc(e.by):'')+'</div></div>'; if(editMode){ const x=document.createElement('button'); x.className='logDel'; x.textContent='×'; x.title='Delete entry'; x.onclick=()=>deleteEntry(e.id); it.appendChild(x); } log.appendChild(it); }); }
     $('btnLabels').textContent='Labels: '+(showLabels?'on':'off');
   }
   const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
   // ---------- export ----------
-  function exportPng(){ if(!img)return; const c=document.createElement('canvas'); c.width=img.width; c.height=img.height; const x=c.getContext('2d'); x.drawImage(img,0,0); const S=Math.max(img.width,img.height),lw=Math.max(2.5,S/420),off=laneOff(),dual=isDual(),sides=dual?['L','R']:['C'];
+  function buildAnnotatedCanvas(){ if(!img)return null; const c=document.createElement('canvas'); c.width=img.width; c.height=img.height; const x=c.getContext('2d'); x.drawImage(img,0,0); const S=Math.max(img.width,img.height),lw=Math.max(2.5,S/420),off=laneOff(),dual=isDual(),sides=dual?['L','R']:['C'];
     const stroke=(p,col,w)=>{ if(p.length<2)return; x.strokeStyle=col; x.lineWidth=w; x.lineCap='round'; x.lineJoin='round'; x.beginPath(); x.moveTo(p[0].x,p[0].y); for(let i=1;i<p.length;i++)x.lineTo(p[i].x,p[i].y); x.stroke(); };
     routes.forEach(r=>{ const span=r.end-r.start; if(dual){ const base=offsetPts(r.points,off); stroke(base.L,'#9aa3b2',lw*0.8); stroke(base.R,'#9aa3b2',lw*0.8); } else { stroke(r.points,'#9aa3b2',lw*0.8); } sides.forEach(side=>{ profile(r.id,side).forEach(iv=>{ if(iv.stage>0){ const cc=subPoly(r.points,(iv.from-r.start)/span,(iv.to-r.start)/span); stroke(dual?offsetPts(cc,off)[side]:cc,curColors[iv.stage]||'#888',lw); } }); }); });
-    triggerDownload((svcOf(active)?svcOf(active).key:'base')+'-progress-'+new Date().toISOString().slice(0,10)+'.png', c.toDataURL('image/png')); }
-  function exportBoard(){ if(active&&active!=='none')services[active]={routes,entries}; const blob={v:2,image:imgUrl||null,active,showLabels,services}; triggerDownload('infra-progress-board-'+new Date().toISOString().slice(0,10)+'.json', URL.createObjectURL(new Blob([JSON.stringify(blob)],{type:'application/json'}))); }
+    return c; }
+  function exportPng(){ const c=buildAnnotatedCanvas(); if(!c)return; triggerDownload((svcOf(active)?svcOf(active).key:'base')+'-progress-'+new Date().toISOString().slice(0,10)+'.png', c.toDataURL('image/png')); }
+  function exportBoard(){ commitActive(); const blob={v:2,image:imgUrl||null,active,showLabels,services}; triggerDownload('infra-progress-board-'+new Date().toISOString().slice(0,10)+'.json', URL.createObjectURL(new Blob([JSON.stringify(blob)],{type:'application/json'}))); }
   async function importBoard(file){ if(!file)return; showSpin(true,'Importing…'); try{ const txt=await file.text(); const o=JSON.parse(txt); if(o.image) await setImage(o.image,true); applyData(o); await saveData(); try{ if(imgUrl)await window.storage.set(IMG_KEY,imgUrl,false); }catch(e){} refreshUI(); fit(); render(); syncControls(); flashBar('Board imported'); }catch(e){ flashBar('Import failed — not a valid board file'); } showSpin(false); }
 
   async function resetAll(){ if(!await uiConfirm('Reset everything','Reset the drawing and ALL services (routes and progress for every discipline)? This cannot be undone.'))return; services=emptyServices(); active='roadworks'; loadActiveRefs(); img=null; imgUrl=null; for(const sh of [true,false]){ try{await window.storage.delete(IMG_KEY,sh);}catch(e){} try{await window.storage.delete(DATA_KEY,sh);}catch(e){} } $('empty').classList.remove('hidden'); syncControls(); refreshUI(); render(); }
 
-  function syncControls(){ const hasImg=!!img, canEdit=hasImg&&active!=='none'; $('btnRoute').disabled=!canEdit; $('btnUpdate').disabled=!canEdit; $('btnFit').disabled=!hasImg; $('btnLabels').disabled=!hasImg; $('btnExport').disabled=!hasImg; }
+  function syncControls(){ const hasImg=!!img, canEdit=hasImg&&active!=='none'&&editMode; $('btnRoute').disabled=!canEdit; $('btnUpdate').disabled=!canEdit; $('btnFit').disabled=!hasImg; $('btnLabels').disabled=!hasImg; $('btnExport').disabled=!hasImg; $('btnReport').disabled=false; $('btnCsv').disabled=false; $('btnLoad').disabled=!editMode; const l2=$('btnLoad2'); if(l2)l2.disabled=!editMode; $('btnReset').disabled=!editMode; }
   const showSpin=(on,txt)=>{ if(txt)$('spinTxt').textContent=txt; $('spinner').classList.toggle('hidden',!on); };
   function triggerDownload(filename,href){ const a=document.createElement('a'); a.href=href; a.download=filename; a.style.display='none'; document.body.appendChild(a); a.click(); setTimeout(()=>{ try{ a.remove(); if(String(href).slice(0,5)==='blob:')URL.revokeObjectURL(href); }catch(e){} },1500); }
 
@@ -625,16 +736,20 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
   $('btnLoad').onclick=$('btnLoad2').onclick=()=>$('fileInput').click();
   $('fileInput').onchange=e=>onFile(e.target.files[0]);
   $('layer1').onchange=onLayer1; $('layer2').onchange=onLayer2; $('layer3').onchange=onLayer3;
-  $('btnRoute').onclick=startRoute; $('btnUpdate').onclick=()=>openUpdate(); $('btnSync').onclick=syncNow; $('btnFit').onclick=fit;
+  $('btnRoute').onclick=async()=>{ if(await requireName()) startRoute(); }; $('btnUpdate').onclick=async()=>{ if(await requireName()) openUpdate(); }; $('btnSync').onclick=syncNow; $('btnFit').onclick=fit;
   $('btnLabels').onclick=()=>{ showLabels=!showLabels; saveData(); refreshUI(); render(); };
   $('btnExport').onclick=exportPng; $('btnReset').onclick=resetAll;
+  $('btnReport').onclick=openReport; $('btnCsv').onclick=exportCsv;
+  $('btnMode').onclick=toggleMode;
+  $('whoLbl').onclick=async()=>{ const n=await uiPrompt('Your name','This name is attached to the progress updates you make.',userName); if(n!=null)setUserName(n); };
+  $('qtyTarget').onchange=saveTarget; $('qtyUnit').onchange=saveTarget;
   $('rCancel').onclick=()=>$('routeModal').classList.add('hidden'); $('rStartTrace').onclick=beginTrace;
   $('mCancel').onclick=()=>$('modal').classList.add('hidden'); $('mSave').onclick=saveEntry; $('mPick').onclick=startPick;
   [...$('mSide').children].forEach(b=>b.onclick=()=>setSide(b.dataset.s));
   window.addEventListener('resize',render);
   async function pollSync(){ if(mode!=='idle')return; if(document.querySelector('.ov:not(.hidden)'))return; try{ const d=await window.storage.get(DATA_KEY,true); if(d&&d.value&&d.value!==lastDataStr){ lastDataStr=d.value; applyData(JSON.parse(d.value),true); refreshUI(); render(); flashBar('Updated from shared board'); } const im=await window.storage.get(IMG_KEY,true); if(im&&im.value&&im.value!==imgUrl) await setImage(im.value,false); }catch(e){} }
   setInterval(pollSync,10000);
-  renderLayoutSelectors(); loadActiveRefs(); refreshUI(); loadAll();
+  renderLayoutSelectors(); loadActiveRefs(); renderWho(); applyEditMode(); loadAll();
 })();
 </script>
 

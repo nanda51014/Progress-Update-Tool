@@ -11,6 +11,9 @@ Load your project layout image, pick a service (roadworks, pipe laying, ducts, c
 - Trace routes by clicking along the centreline, with chainage stationing
 - Log progress per route, per side (LHS/RHS/Both for dual-carriageway services), per activity stage
 - Colour-coded progress overlay and per-stage / overall percentage summaries
+- **Installed quantity vs. target** per layer — set a target (e.g. 2,400 m of pipe, 35 manholes) and see how much is fully complete against it
+- **Roles & audit trail** — a per-browser View/Edit mode (viewers can't change data), and every progress entry is stamped with who logged it
+- **Reporting** — one-click printable PDF report (summary, per-activity/route tables, annotated drawing, progress log) and a CSV export of all entries for Excel
 - Export the annotated drawing as PNG
 - Export / import the whole board as a JSON file
 - **Shared multi-user syncing** via Firebase — everyone on the same board sees each other's routes and progress
