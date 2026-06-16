@@ -7,7 +7,7 @@ Load your project layout image, pick a service (roadworks, pipe laying, ducts, c
 ## Features
 
 - Load any layout drawing (image) as the base
-- 27 infrastructure services across disciplines (Earthworks, Roads, Storm Water, Foul Sewer, Water, Power, Telecom, etc.)
+- Layered **Layout** selector — drill down by category (Earthworks, Wet Services, Dry Services, Road Works, Structures) → type (Pipe Laying, Chambers, Cable/Duct, Carriageway, Footpath…) → discipline (Storm Water, Sewer, CCTV, Street Lighting…)
 - Trace routes by clicking along the centreline, with chainage stationing
 - Log progress per route, per side (LHS/RHS/Both for dual-carriageway services), per activity stage
 - Colour-coded progress overlay and per-stage / overall percentage summaries

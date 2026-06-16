@@ -14,7 +14,11 @@
     <div class="brand">Infrastructure Progress Layout</div>
     <div class="tools">
       <button id="btnLoad">Load drawing</button>
-      <label class="svcWrap">Service<select id="svc"></select></label>
+      <div class="svcWrap">Layout
+        <select id="layer1"></select>
+        <select id="layer2" class="hidden"></select>
+        <select id="layer3" class="hidden"></select>
+      </div>
       <div class="sep"></div>
       <button id="btnRoute" disabled>+ Add route</button>
       <button id="btnUpdate" disabled>Update progress</button>
@@ -311,9 +315,11 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
   const T_LFND=["Not started","Excavation","Foundation / Base","Pole Erection","Backfilling","Complete"];
   const T_LAND=["Not started","Fine Grading","Topsoil","Planting","Irrigation Connection","Complete"];
   const T_STRC=["Not started","Excavation","Foundation","Substructure","Superstructure","Backfilling","Complete"];
+  const T_FOOT=["Not started","Subgrade Preparation","Subbase","Base Course","Surfacing / Paving","Complete"];
   const SERVICES=[
     {key:'earthworks',name:'Earthworks',group:'Earthworks',stages:T_EARTH},
-    {key:'roadworks',name:'Road Works - Pavement',group:'Roads',stages:T_ROAD,dual:true},
+    {key:'roadworks',name:'Road Works - Carriageway',group:'Roads',stages:T_ROAD,dual:true},
+    {key:'footpath',name:'Road Works - Footpath',group:'Roads',stages:T_FOOT},
     {key:'kerbs',name:'Kerbs & Channels',group:'Roads',stages:T_KERB},
     {key:'stormwater_pipe',name:'Storm Water - Pipe Laying',group:'Storm Water',stages:T_PIPE},
     {key:'stormwater_mh',name:'Storm Water - Manholes',group:'Storm Water',stages:T_CHMB},
@@ -344,7 +350,70 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
   SERVICES.forEach(s=>s.colors=ramp(s.stages.length));
   const svcOf=k=>SERVICES.find(s=>s.key===k);
   const isDual=()=>{ const s=svcOf(active); return !!(s&&s.dual); };
-  function buildSvcSelect(){ const sel=$('svc'); sel.innerHTML=''; const none=document.createElement('option'); none.value='none'; none.textContent='None (base layout)'; sel.appendChild(none); const groups={}; SERVICES.forEach(s=>{ const g=s.group||'Other'; if(!groups[g]){ groups[g]=document.createElement('optgroup'); groups[g].label=g; sel.appendChild(groups[g]); } const o=document.createElement('option'); o.value=s.key; o.textContent=s.name; groups[g].appendChild(o); }); sel.value=active; }
+  // Three-layer Layout hierarchy. Leaves carry a `service` key (into SERVICES);
+  // branch nodes carry `children`. Layer 2/3 selects appear only when the chosen
+  // branch has deeper levels.
+  const LAYOUT=[
+    {label:'Earthworks',service:'earthworks'},
+    {label:'Wet Services',children:[
+      {label:'Pipe Laying',children:[
+        {label:'Storm Water',service:'stormwater_pipe'},
+        {label:'Foul Sewer',service:'sewer_pipe'},
+        {label:'Potable Water',service:'potable_pipe'},
+        {label:'Irrigation',service:'irrigation_pipe'},
+        {label:'TSE / Recycled',service:'tse_pipe'},
+        {label:'Firefighting',service:'fire_pipe'},
+        {label:'Gas',service:'gas_pipe'}
+      ]},
+      {label:'Chambers / Manholes',children:[
+        {label:'Storm Water',service:'stormwater_mh'},
+        {label:'Foul Sewer',service:'sewer_mh'},
+        {label:'Potable Water',service:'potable_ch'},
+        {label:'Irrigation',service:'irrigation_ch'},
+        {label:'TSE / Recycled',service:'tse_ch'},
+        {label:'Firefighting',service:'fire_ch'},
+        {label:'Gas',service:'gas_ch'}
+      ]}
+    ]},
+    {label:'Dry Services',children:[
+      {label:'Cable / Duct Laying',children:[
+        {label:'Telecom',service:'telecom_duct'},
+        {label:'Electrical Power',service:'power_duct'},
+        {label:'Street Lighting',service:'lighting_duct'},
+        {label:'CCTV / Security',service:'security_duct'}
+      ]},
+      {label:'Chambers',children:[
+        {label:'Telecom',service:'telecom_ch'},
+        {label:'Electrical Power',service:'power_ch'},
+        {label:'Street Lighting (Foundations)',service:'lighting_fnd'},
+        {label:'CCTV / Security',service:'security_ch'}
+      ]}
+    ]},
+    {label:'Road Works',children:[
+      {label:'Carriageway',service:'roadworks'},
+      {label:'Footpath',service:'footpath'},
+      {label:'Kerbs & Channels',service:'kerbs'}
+    ]},
+    {label:'Structures',service:'structures'}
+  ];
+  function layoutPathOf(key){ for(let i=0;i<LAYOUT.length;i++){ const a=LAYOUT[i]; if(a.service===key)return[i]; if(a.children)for(let j=0;j<a.children.length;j++){ const b=a.children[j]; if(b.service===key)return[i,j]; if(b.children)for(let k=0;k<b.children.length;k++){ if(b.children[k].service===key)return[i,j,k]; } } } return null; }
+  function firstLeaf(node){ let n=node; while(n.children&&n.children.length)n=n.children[0]; return n.service; }
+  function lopt(val,label){ const o=document.createElement('option'); o.value=val; o.textContent=label; return o; }
+  function renderLayoutSelectors(){
+    const path= active==='none'? [] : (layoutPathOf(active)||[]);
+    const s1=$('layer1'); s1.innerHTML=''; s1.appendChild(lopt('none','None (base layout)')); LAYOUT.forEach((n,i)=>s1.appendChild(lopt(String(i),n.label))); s1.value= path.length? String(path[0]):'none';
+    const l1= path.length? LAYOUT[path[0]] : null;
+    const s2=$('layer2');
+    if(l1&&l1.children){ s2.classList.remove('hidden'); s2.innerHTML=''; l1.children.forEach((n,j)=>s2.appendChild(lopt(String(j),n.label))); s2.value= path.length>=2?String(path[1]):'0'; }
+    else { s2.classList.add('hidden'); s2.innerHTML=''; }
+    const l2= (l1&&l1.children&&path.length>=2)? l1.children[path[1]] : null;
+    const s3=$('layer3');
+    if(l2&&l2.children){ s3.classList.remove('hidden'); s3.innerHTML=''; l2.children.forEach((n,k)=>s3.appendChild(lopt(String(k),n.label))); s3.value= path.length>=3?String(path[2]):'0'; }
+    else { s3.classList.add('hidden'); s3.innerHTML=''; }
+  }
+  function onLayer1(){ const v=$('layer1').value; if(v==='none'){ switchService('none'); return; } const node=LAYOUT[+v]; switchService(node.children?firstLeaf(node):node.service); }
+  function onLayer2(){ const node=LAYOUT[+$('layer1').value].children[+$('layer2').value]; switchService(node.children?firstLeaf(node):node.service); }
+  function onLayer3(){ const node=LAYOUT[+$('layer1').value].children[+$('layer2').value].children[+$('layer3').value]; switchService(node.service); }
 
   function emptyServices(){ const o={}; SERVICES.forEach(s=>o[s.key]={routes:[],entries:[]}); return o; }
   let services=emptyServices();
@@ -497,7 +566,7 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
 
   // ---------- UI ----------
   function refreshUI(){
-    $('svc').value=active;
+    renderLayoutSelectors();
     const svc=svcOf(active);
     if(active==='none'){
       $('overallTitle').textContent='Overall progress'; $('legendTitle').textContent='Stage legend';
@@ -541,7 +610,7 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
   // ---------- wire ----------
   $('btnLoad').onclick=$('btnLoad2').onclick=()=>$('fileInput').click();
   $('fileInput').onchange=e=>onFile(e.target.files[0]);
-  $('svc').onchange=e=>switchService(e.target.value);
+  $('layer1').onchange=onLayer1; $('layer2').onchange=onLayer2; $('layer3').onchange=onLayer3;
   $('btnRoute').onclick=startRoute; $('btnUpdate').onclick=()=>openUpdate(); $('btnSync').onclick=syncNow; $('btnFit').onclick=fit;
   $('btnLabels').onclick=()=>{ showLabels=!showLabels; saveData(); refreshUI(); render(); };
   $('btnExport').onclick=exportPng; $('btnReset').onclick=resetAll;
@@ -551,7 +620,7 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
   window.addEventListener('resize',render);
   async function pollSync(){ if(mode!=='idle')return; if(document.querySelector('.ov:not(.hidden)'))return; try{ const d=await window.storage.get(DATA_KEY,true); if(d&&d.value&&d.value!==lastDataStr){ lastDataStr=d.value; applyData(JSON.parse(d.value),true); refreshUI(); render(); flashBar('Updated from shared board'); } const im=await window.storage.get(IMG_KEY,true); if(im&&im.value&&im.value!==imgUrl) await setImage(im.value,false); }catch(e){} }
   setInterval(pollSync,10000);
-  buildSvcSelect(); loadActiveRefs(); refreshUI(); loadAll();
+  renderLayoutSelectors(); loadActiveRefs(); refreshUI(); loadAll();
 })();
 </script>
 
