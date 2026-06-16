@@ -356,37 +356,51 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
   const LAYOUT=[
     {label:'Earthworks',service:'earthworks'},
     {label:'Wet Services',children:[
-      {label:'Pipe Laying',children:[
-        {label:'Storm Water',service:'stormwater_pipe'},
-        {label:'Foul Sewer',service:'sewer_pipe'},
-        {label:'Potable Water',service:'potable_pipe'},
-        {label:'Irrigation',service:'irrigation_pipe'},
-        {label:'TSE / Recycled',service:'tse_pipe'},
-        {label:'Firefighting',service:'fire_pipe'},
-        {label:'Gas',service:'gas_pipe'}
+      {label:'Storm Water',children:[
+        {label:'Pipe Laying',service:'stormwater_pipe'},
+        {label:'Chambers / Manholes',service:'stormwater_mh'}
       ]},
-      {label:'Chambers / Manholes',children:[
-        {label:'Storm Water',service:'stormwater_mh'},
-        {label:'Foul Sewer',service:'sewer_mh'},
-        {label:'Potable Water',service:'potable_ch'},
-        {label:'Irrigation',service:'irrigation_ch'},
-        {label:'TSE / Recycled',service:'tse_ch'},
-        {label:'Firefighting',service:'fire_ch'},
-        {label:'Gas',service:'gas_ch'}
+      {label:'Foul Sewer',children:[
+        {label:'Pipe Laying',service:'sewer_pipe'},
+        {label:'Chambers / Manholes',service:'sewer_mh'}
+      ]},
+      {label:'Potable Water',children:[
+        {label:'Pipe Laying',service:'potable_pipe'},
+        {label:'Chambers',service:'potable_ch'}
+      ]},
+      {label:'Irrigation',children:[
+        {label:'Pipe Laying',service:'irrigation_pipe'},
+        {label:'Chambers',service:'irrigation_ch'}
+      ]},
+      {label:'TSE / Recycled',children:[
+        {label:'Pipe Laying',service:'tse_pipe'},
+        {label:'Chambers',service:'tse_ch'}
+      ]},
+      {label:'Firefighting',children:[
+        {label:'Pipe Laying',service:'fire_pipe'},
+        {label:'Chambers',service:'fire_ch'}
+      ]},
+      {label:'Gas',children:[
+        {label:'Pipe Laying',service:'gas_pipe'},
+        {label:'Chambers',service:'gas_ch'}
       ]}
     ]},
     {label:'Dry Services',children:[
-      {label:'Cable / Duct Laying',children:[
-        {label:'Telecom',service:'telecom_duct'},
-        {label:'Electrical Power',service:'power_duct'},
-        {label:'Street Lighting',service:'lighting_duct'},
-        {label:'CCTV / Security',service:'security_duct'}
+      {label:'Telecom',children:[
+        {label:'Cable / Duct Laying',service:'telecom_duct'},
+        {label:'Chambers',service:'telecom_ch'}
       ]},
-      {label:'Chambers',children:[
-        {label:'Telecom',service:'telecom_ch'},
-        {label:'Electrical Power',service:'power_ch'},
-        {label:'Street Lighting (Foundations)',service:'lighting_fnd'},
-        {label:'CCTV / Security',service:'security_ch'}
+      {label:'Electrical Power',children:[
+        {label:'Cable / Duct Laying',service:'power_duct'},
+        {label:'Chambers',service:'power_ch'}
+      ]},
+      {label:'Street Lighting',children:[
+        {label:'Cable / Duct Laying',service:'lighting_duct'},
+        {label:'Foundations',service:'lighting_fnd'}
+      ]},
+      {label:'CCTV / Security',children:[
+        {label:'Cable / Duct Laying',service:'security_duct'},
+        {label:'Chambers',service:'security_ch'}
       ]}
     ]},
     {label:'Road Works',children:[
