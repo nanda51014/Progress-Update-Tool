@@ -628,6 +628,10 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
   // ---------- target quantity (#3) ----------
   function saveTarget(){ if(active==='none'||!services[active])return; const q=$('qtyTarget').value, u=$('qtyUnit').value.trim(); services[active].target={qty: q===''?null:Number(q), unit:u||null}; saveData(); refreshUI(); }
   const fmtN=n=>Math.round(n||0).toLocaleString();
+  // Installed = built through the last PHYSICAL activity (the phase before a
+  // final "Complete" sign-off, if the template has one). Cumulative, so it
+  // counts everything that has reached at least that phase.
+  function installedQty(C){ const lastIsComplete=(curStages[curMax]||'').toLowerCase()==='complete'; const physIdx= lastIsComplete?Math.max(1,curMax-1):curMax; const isCnt=isCountSvc(active); const installed= isCnt? entries.filter(e=>e.stage>=physIdx).length : (C.stageLen[physIdx]||0); return {installed,physIdx,isCnt,physName:curStages[physIdx]||'Complete'}; }
 
   // run fn with globals temporarily pointed at another layer, then restore
   function withLayer(key,fn){ const sv={active,routes,entries,curStages,curColors,curMax}; active=key; loadActiveRefs(); const r=fn(); active=sv.active; routes=sv.routes; entries=sv.entries; curStages=sv.curStages; curColors=sv.curColors; curMax=sv.curMax; return r; }
@@ -649,12 +653,11 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
     else{ body+='<table><tr><th>Layer</th><th class="r">Routes</th><th class="r">Length (m)</th><th class="r">Overall %</th></tr>'; summary.forEach(s=>{ body+='<tr><td>'+esc(s.name)+'</td><td class="r">'+s.routes+'</td><td class="r">'+fmtN(s.total)+'</td><td class="r">'+s.overall.toFixed(1)+'%</td></tr>'; }); body+='</table>'; }
     if(active!=='none'){
       const svc=svcOf(active), C=computeAll();
-      const isCnt=isCountSvc(active), finalLen=C.stageLen[curMax]||0, finalCount=entries.filter(e=>e.stage===curMax).length;
-      const installed=isCnt?finalCount:finalLen, tgt=services[active].target||{}, unit=(tgt.unit&&tgt.unit.trim())||(isCnt?'no.':'m');
+      const II=installedQty(C), isCnt=II.isCnt, installed=II.installed, tgt=services[active].target||{}, unit=(tgt.unit&&tgt.unit.trim())||(isCnt?'no.':'m');
       const tq=(tgt.qty!=null&&tgt.qty!=='')?Number(tgt.qty):null;
       body+='<h2>'+esc(svc.name)+' — detail</h2>';
       body+='<div class="kpis"><div class="kpi"><div class="kv">'+(C.total?C.overall.toFixed(1)+'%':'—')+'</div><div class="kl">Overall (weighted)</div></div>';
-      body+='<div class="kpi"><div class="kv">'+fmtN(installed)+(tq!=null?(' / '+fmtN(tq)):'')+' '+esc(unit)+'</div><div class="kl">Installed (complete)</div></div>';
+      body+='<div class="kpi"><div class="kv">'+fmtN(installed)+(tq!=null?(' / '+fmtN(tq)):'')+' '+esc(unit)+'</div><div class="kl">Installed (through '+esc(II.physName)+')</div></div>';
       if(C.dual&&C.total){ body+='<div class="kpi"><div class="kv">'+C.L.toFixed(0)+'% / '+C.R.toFixed(0)+'%</div><div class="kl">LHS / RHS</div></div>'; }
       body+='</div>';
       body+='<h3>Activities complete (cumulative)</h3><table><tr><th>Activity</th><th class="r">Metres complete</th></tr>'; curStages.forEach((n,i)=>{ body+='<tr><td><span class="sw" style="background:'+curColors[i]+'"></span>'+esc(n)+'</td><td class="r">'+fmtN(C.stageLen[i]||0)+'</td></tr>'; }); body+='</table>';
@@ -699,12 +702,12 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
     $('splitRow').innerHTML= (C.dual&&C.total)? ('<div class="sb"><div class="k">LHS</div><div class="v">'+C.L.toFixed(0)+'%</div></div><div class="sb"><div class="k">RHS</div><div class="v">'+C.R.toFixed(0)+'%</div></div>'):'';
     // ----- installed quantity vs target (#3) -----
     $('qtyCard').style.display='';
-    const isCnt=isCountSvc(active), finalLen=C.stageLen[curMax]||0, finalCount=entries.filter(e=>e.stage===curMax).length;
-    const installed=isCnt?finalCount:finalLen, tgt=services[active].target||{}, defUnit=isCnt?'no.':'m', unit=(tgt.unit&&tgt.unit.trim())||defUnit;
+    const II=installedQty(C); const isCnt=II.isCnt, installed=II.installed;
+    const tgt=services[active].target||{}, defUnit=isCnt?'no.':'m', unit=(tgt.unit&&tgt.unit.trim())||defUnit;
     const tq=(tgt.qty!=null&&tgt.qty!=='')?Number(tgt.qty):null;
     $('qtyVal').textContent= (tq!=null&&tq>0)? (fmtN(installed)+' / '+fmtN(tq)+' '+unit) : (fmtN(installed)+' '+unit);
     $('qtyBar').style.width= (tq!=null&&tq>0)? clamp(installed/tq*100,0,100)+'%' : '0%';
-    $('qtySub').textContent= isCnt? 'Items at final “'+(curStages[curMax]||'Complete')+'” stage'+(tq!=null&&tq>0?(' · '+(installed/tq*100).toFixed(0)+'% of target'):'') : 'Metres fully complete'+(tq!=null&&tq>0?(' · '+(installed/tq*100).toFixed(0)+'% of target'):'');
+    $('qtySub').textContent= (isCnt?'Items through “':'Metres through “')+II.physName+'”'+(tq!=null&&tq>0?(' · '+(installed/tq*100).toFixed(0)+'% of target'):'');
     $('qtyTarget').value= tq!=null? tq : ''; $('qtyUnit').value= tgt.unit||''; $('qtyUnit').placeholder=defUnit;
     $('qtyTarget').disabled=!editMode; $('qtyUnit').disabled=!editMode;
     const rlst=$('routeList');
