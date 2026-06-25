@@ -6,7 +6,7 @@ Load your project layout image, pick a service (roadworks, pipe laying, ducts, c
 
 ## Features
 
-- Load any layout drawing (image) as the base
+- Load any layout drawing as the base — image **or PDF** (first page is rendered)
 - Layered **Layout** selector — drill down by category (Earthworks, Wet Services, Dry Services, Road Works, Structures) → type (Pipe Laying, Chambers, Cable/Duct, Carriageway, Footpath…) → discipline (Storm Water, Sewer, CCTV, Street Lighting…)
 - **Per-project service scope** — when a project is created you tick which services it actually contains (road, storm water, sewer, bridge…); only those appear in the Layout selector. Change the scope anytime via **Services…**
 - Trace routes by clicking along the centreline, with chainage stationing

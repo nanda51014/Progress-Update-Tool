@@ -37,8 +37,8 @@
       <button id="btnCsv">Export CSV</button>
       <div class="grow"></div>
       <button id="btnReset" class="danger">Reset</button>
-      <input type="file" id="fileInput" accept="image/*" hidden>
-      <input type="file" id="detectInput" accept="image/*" hidden>
+      <input type="file" id="fileInput" accept="image/*,application/pdf,.pdf" hidden>
+      <input type="file" id="detectInput" accept="image/*,application/pdf,.pdf" hidden>
     </div>
   </div>
 
@@ -395,7 +395,7 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
 <script>
 (function(){
   const IMG_KEY='rpt:image', DATA_KEY='rpt:data';
-  const T_EARTH=["Not started","Clearing & Grubbing","Excavation / Cut","Fill & Compaction","Subgrade Preparation","Proof Rolling","Complete"];
+  const T_EARTH=["Not started","Cutting","Filling"];
   const T_ROAD=["Not started","Earthworks","Formation / Subgrade","Subbase","Road Base","Asphalt Base (Binder)","Wearing Course","Complete"];
   const T_PIPE=["Not started","Excavation","Bedding","Pipe Laying","Surround","Backfilling","Testing","Complete"];
   const T_DUCT=["Not started","Excavation","Bedding","Duct Laying","Encasement","Backfilling","Testing","Complete"];
@@ -404,6 +404,8 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
   const T_LFND=["Not started","Excavation","Foundation / Base","Pole Erection","Backfilling","Complete"];
   const T_LAND=["Not started","Fine Grading","Topsoil","Planting","Irrigation Connection","Complete"];
   const T_STRC=["Not started","Excavation","Foundation","Substructure","Superstructure","Backfilling","Complete"];
+  const T_BRIDGE=["Not started","Piling / Foundations","Pile Caps","Piers & Abutments","Bearings","Beams / Girders","Deck Slab","Parapet & Surfacing","Complete"];
+  const T_UNDERPASS=["Not started","Excavation","Base Slab","Walls","Roof Slab","Waterproofing","Backfilling","Approach & Surfacing","Complete"];
   const T_FOOT=["Not started","Subgrade Preparation","Subbase","Base Course","Surfacing / Paving","Complete"];
   const SERVICES=[
     {key:'earthworks',name:'Earthworks',group:'Earthworks',stages:T_EARTH},
@@ -433,7 +435,9 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
     {key:'security_duct',name:'Security Network - Duct Laying',group:'Security Network',stages:T_DUCT},
     {key:'security_ch',name:'Security Network - Chambers',group:'Security Network',stages:T_CHMB},
     {key:'landscaping',name:'Landscaping / Softscape',group:'Landscaping',stages:T_LAND},
-    {key:'structures',name:'Structures / Culverts',group:'Structures',stages:T_STRC}
+    {key:'structures',name:'Structures / Culverts',group:'Structures',stages:T_STRC},
+    {key:'bridges',name:'Structures - Bridges',group:'Structures',stages:T_BRIDGE},
+    {key:'underpass',name:'Structures - Underpass',group:'Structures',stages:T_UNDERPASS}
   ];
   function ramp(n){ const out=['#4b5563']; const stops=[[180,83,9],[217,119,6],[234,179,8],[163,230,53],[34,197,94],[22,163,74]]; const m=n-1; for(let i=1;i<n;i++){ const t=(m<=1)?0:(i-1)/(m-1); const pos=t*(stops.length-1); const a=Math.floor(pos),b=Math.min(stops.length-1,a+1),f=pos-a; const c=[0,1,2].map(j=>Math.round(stops[a][j]+(stops[b][j]-stops[a][j])*f)); out.push('rgb('+c[0]+','+c[1]+','+c[2]+')'); } return out; }
   SERVICES.forEach(s=>s.colors=ramp(s.stages.length));
@@ -497,7 +501,10 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
       {label:'Footpath',service:'footpath'},
       {label:'Kerbs & Channels',service:'kerbs'}
     ]},
-    {label:'Structures',service:'structures'}
+    {label:'Structures',children:[
+      {label:'Bridges',service:'bridges'},
+      {label:'Underpass',service:'underpass'}
+    ]}
   ];
   function layoutPathOf(key){ for(let i=0;i<LAYOUT.length;i++){ const a=LAYOUT[i]; if(a.service===key)return[i]; if(a.children)for(let j=0;j<a.children.length;j++){ const b=a.children[j]; if(b.service===key)return[i,j]; if(b.children)for(let k=0;k<b.children.length;k++){ if(b.children[k].service===key)return[i,j,k]; } } } return null; }
   // ----- project scope (which services are enabled for this project) -----
@@ -582,6 +589,10 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
 
   // ---------- image ----------
   const readFile=f=>new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=()=>rej(r.error); r.readAsDataURL(f); });
+  const isPdf=f=>f&&(f.type==='application/pdf'||/\.pdf$/i.test(f.name||''));
+  function loadPdfJs(){ return new Promise(res=>{ if(typeof pdfjsLib!=='undefined')return res(); const s=document.createElement('script'); s.src='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js'; s.onload=()=>{ try{ pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js'; }catch(e){} res(); }; s.onerror=()=>res(); document.head.appendChild(s); }); }
+  async function pdfToDataUrl(file){ await loadPdfJs(); if(typeof pdfjsLib==='undefined')throw new Error('PDF engine unavailable'); const buf=await file.arrayBuffer(); const pdf=await pdfjsLib.getDocument({data:buf}).promise; const page=await pdf.getPage(1); let vp=page.getViewport({scale:1}); const scale=Math.min(3, 2200/Math.max(vp.width,vp.height)); vp=page.getViewport({scale}); const c=document.createElement('canvas'); c.width=Math.round(vp.width); c.height=Math.round(vp.height); const cx=c.getContext('2d'); cx.fillStyle='#fff'; cx.fillRect(0,0,c.width,c.height); await page.render({canvasContext:cx,viewport:vp}).promise; return c.toDataURL('image/png'); }
+  async function fileToImageUrl(file){ return isPdf(file)? await pdfToDataUrl(file) : await readFile(file); }
   function downscale(url,maxDim,fmt){ return new Promise(res=>{ const i=new Image(); i.onload=()=>{ let w=i.width,h=i.height; const s=Math.min(1,maxDim/Math.max(w,h)); w=Math.round(w*s);h=Math.round(h*s); const c=document.createElement('canvas');c.width=w;c.height=h; const x=c.getContext('2d'); x.fillStyle='#fff';x.fillRect(0,0,w,h); x.drawImage(i,0,0,w,h); res(c.toDataURL(fmt==='jpeg'?'image/jpeg':'image/png',fmt==='jpeg'?0.82:undefined)); }; i.src=url; }); }
   async function prepareForStore(u){ if(u.length<=4500000)return u; let v=await downscale(u,2000,'png'); if(v.length<=4500000)return v; v=await downscale(u,1600,'jpeg'); if(v.length<=4500000)return v; return await downscale(u,1200,'jpeg'); }
   // Each layout (service) can have its own drawing, stored under rpt:image:<key>.
@@ -592,7 +603,7 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
   function setBaseImage(url,store){ return new Promise(async res=>{ const i=new Image(); i.onload=async()=>{ baseImg=i; baseUrl=url; if(applyDisplayed()){ fit(); render(); } if(store){ try{ const su=await prepareForStore(url); baseUrl=su; if(_shownImg===i)imgUrl=su; try{await window.storage.set(IMG_KEY,su,true);}catch(e){} try{await window.storage.set(IMG_KEY,su,false);}catch(e){} }catch(e){console.warn(e);} } res(); }; i.onerror=()=>res(); i.src=url; }); }
   async function setServiceImage(key,url,store){ const el=await loadImageEl(url); if(!el)return; svcImgCache[key]={img:el,url}; if(!services[key])services[key]={routes:[],entries:[],target:null,hasImage:false}; services[key].hasImage=true; if(key===active){ applyDisplayed(); fit(); render(); } if(store){ try{ const su=await prepareForStore(url); svcImgCache[key].url=su; if(key===active&&_shownImg===el)imgUrl=su; try{await window.storage.set(imgKeyFor(key),su,true);}catch(e){} try{await window.storage.set(imgKeyFor(key),su,false);}catch(e){} }catch(e){console.warn(e);} await saveData(); } }
   async function loadServiceImage(key){ if(key==='none'||!services[key]||!services[key].hasImage||svcImgCache[key])return; try{ let r=await window.storage.get(imgKeyFor(key),true); if(!(r&&r.value)) r=await window.storage.get(imgKeyFor(key),false); if(r&&r.value){ const el=await loadImageEl(r.value); if(el){ svcImgCache[key]={img:el,url:r.value}; if(key===active){ if(applyDisplayed())fit(); render(); } } } }catch(e){} }
-  async function onFile(f){ if(!f)return; showSpin(true,'Saving…'); try{ const url=await readFile(f); await setBaseImage(url,true);}catch(e){} showSpin(false); }
+  async function onFile(f){ if(!f)return; showSpin(true,isPdf(f)?'Rendering PDF…':'Saving…'); try{ const url=await fileToImageUrl(f); await setBaseImage(url,true);}catch(e){ console.warn(e); flashBar('Could not read that file'); } showSpin(false); }
 
   // ---------- geometry ----------
   const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
@@ -826,7 +837,7 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
 
   // Auto-detect prompts for this layout's drawing (or reuses an existing one).
   function startDetect(){ if(active==='none')return; if(svcImgCache[active]||(services[active]&&services[active].hasImage)){ pendingOpenDetect=false; openDetect(); } else { pendingOpenDetect=true; $('detectInput').click(); } }
-  async function onDetectFile(f){ if(!f)return; showSpin(true,'Loading drawing…'); try{ const url=await readFile(f); await setServiceImage(active,url,true);}catch(e){} showSpin(false); openDetect(); pendingOpenDetect=false; }
+  async function onDetectFile(f){ if(!f)return; showSpin(true,isPdf(f)?'Rendering PDF…':'Loading drawing…'); try{ const url=await fileToImageUrl(f); await setServiceImage(active,url,true);}catch(e){ console.warn(e); flashBar('Could not read that file'); } showSpin(false); openDetect(); pendingOpenDetect=false; }
   function openDetect(){ if(active==='none')return; if(!img&&services[active]&&services[active].hasImage){ /* image still loading */ } pickedColor=null; $('dtSvc').textContent=svcOf(active)?svcOf(active).name:''; $('dtSwatch').style.background='transparent'; $('dtSwatch').textContent='none'; $('dtTol').value=60; $('dtTolV').textContent='60'; $('dtOcr').checked=true; $('dtErr').textContent=''; $('detectModal').classList.remove('hidden'); }
   function startEyedrop(){ $('detectModal').classList.add('hidden'); mode='eyedrop'; cv.classList.add('picking'); showBar('Click a network line on the drawing to sample its colour.',[['Cancel',cancelEyedrop,true]]); }
   function cancelEyedrop(){ if(mode!=='eyedrop')return; mode='idle'; cv.classList.remove('picking'); hideBar(); $('detectModal').classList.remove('hidden'); }
