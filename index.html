@@ -22,6 +22,7 @@
         <select id="layer2" class="hidden"></select>
         <select id="layer3" class="hidden"></select>
       </div>
+      <button id="btnServices">⚙ Services…</button>
       <div class="sep"></div>
       <button id="btnRoute" disabled>+ Add route</button>
       <button id="btnUpdate" disabled>Update progress</button>
@@ -126,6 +127,16 @@
     </div>
   </div>
 
+  <div id="svcPicker" class="ov hidden">
+    <div class="mbox" style="width:460px">
+      <div class="mtitle" id="spTitle">Select services in this project</div>
+      <div class="muted" style="margin-bottom:8px;font-size:12.5px;line-height:1.45">Tick the services included in this project. Only ticked services appear in the Layout selector — you can change this anytime via “Services…”.</div>
+      <div id="spList" style="max-height:52vh;overflow-y:auto;margin:4px 0 6px;padding-right:4px"></div>
+      <div class="merr" id="spErr"></div>
+      <div class="mbtns"><button id="spAll" class="ghost">Select all</button><button id="spNone" class="ghost">Clear</button><span style="flex:1"></span><button id="spCancel" class="ghost">Cancel</button><button id="spSave">Save</button></div>
+    </div>
+  </div>
+
   <div id="prompt" class="ov hidden">
     <div class="mbox">
       <div class="mtitle" id="pmTitle">Your name</div>
@@ -154,6 +165,11 @@
   .qtyset input{width:100%;margin-top:4px;background:#ffffff;border:1px solid #d1d5db;border-radius:7px;color:#1f2937;padding:6px 8px;font:inherit;font-size:13px}
   .qtyset input:disabled{background:#f3f4f6;color:#9aa1ac}
   #pmInput{display:block;width:100%;background:#ffffff;border:1px solid #d1d5db;border-radius:8px;color:#1f2937;padding:8px 10px;font:inherit;font-size:13px}
+  .spcat{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:#6b7280;font-weight:600;margin:12px 0 2px;padding-bottom:3px;border-bottom:1px solid #eceef1}
+  .spcat:first-child{margin-top:2px}
+  .sprow{display:flex;align-items:center;gap:10px;padding:6px 6px;font-size:13px;cursor:pointer;border-radius:7px}
+  .sprow:hover{background:#f3f4f6}
+  .sprow input{width:16px;height:16px;cursor:pointer;flex:none}
   button{font:inherit;font-size:13px;padding:8px 12px;border-radius:8px;border:1px solid #d1d5db;background:#ffffff;color:#374151;cursor:pointer;transition:.12s;text-align:left}
   button:hover:not(:disabled){background:#f3f4f6;border-color:#c2c8d0}
   button:disabled{opacity:.45;cursor:not-allowed}
@@ -445,18 +461,25 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
     {label:'Structures',service:'structures'}
   ];
   function layoutPathOf(key){ for(let i=0;i<LAYOUT.length;i++){ const a=LAYOUT[i]; if(a.service===key)return[i]; if(a.children)for(let j=0;j<a.children.length;j++){ const b=a.children[j]; if(b.service===key)return[i,j]; if(b.children)for(let k=0;k<b.children.length;k++){ if(b.children[k].service===key)return[i,j,k]; } } } return null; }
-  function firstLeaf(node){ let n=node; while(n.children&&n.children.length)n=n.children[0]; return n.service; }
+  // ----- project scope (which services are enabled for this project) -----
+  const inScope=k=> scope===null || scope.indexOf(k)>=0;
+  function nodeEnabled(n){ return n.service? inScope(n.service) : (n.children? n.children.some(nodeEnabled) : false); }
+  function firstScopedKey(){ for(const c of LAYOUT){ if(c.service){ if(inScope(c.service))return c.service; } else for(const b of c.children){ if(b.service){ if(inScope(b.service))return b.service; } else for(const l of b.children){ if(inScope(l.service))return l.service; } } } return 'none'; }
+  function firstEnabledIdx(arr){ for(let i=0;i<arr.length;i++) if(nodeEnabled(arr[i])) return String(i); return '0'; }
+  // flatten LAYOUT into tickable units (one per discipline / road element / standalone)
+  function scopeUnits(){ const units=[]; LAYOUT.forEach(cat=>{ if(cat.service){ units.push({cat:cat.label,label:cat.label,keys:[cat.service]}); } else cat.children.forEach(ch=>{ if(ch.service){ units.push({cat:cat.label,label:ch.label,keys:[ch.service]}); } else { units.push({cat:cat.label,label:ch.label,keys:ch.children.map(l=>l.service)}); } }); }); return units; }
+  function firstLeaf(node){ let n=node; while(n.children&&n.children.length){ n=n.children.find(nodeEnabled)||n.children[0]; } return n.service; }
   function lopt(val,label){ const o=document.createElement('option'); o.value=val; o.textContent=label; return o; }
   function renderLayoutSelectors(){
     const path= active==='none'? [] : (layoutPathOf(active)||[]);
-    const s1=$('layer1'); s1.innerHTML=''; s1.appendChild(lopt('none','None (base layout)')); LAYOUT.forEach((n,i)=>s1.appendChild(lopt(String(i),n.label))); s1.value= path.length? String(path[0]):'none';
+    const s1=$('layer1'); s1.innerHTML=''; s1.appendChild(lopt('none','None (base layout)')); LAYOUT.forEach((n,i)=>{ if(nodeEnabled(n)) s1.appendChild(lopt(String(i),n.label)); }); s1.value= path.length? String(path[0]):'none';
     const l1= path.length? LAYOUT[path[0]] : null;
     const s2=$('layer2');
-    if(l1&&l1.children){ s2.classList.remove('hidden'); s2.innerHTML=''; l1.children.forEach((n,j)=>s2.appendChild(lopt(String(j),n.label))); s2.value= path.length>=2?String(path[1]):'0'; }
+    if(l1&&l1.children){ s2.classList.remove('hidden'); s2.innerHTML=''; l1.children.forEach((n,j)=>{ if(nodeEnabled(n)) s2.appendChild(lopt(String(j),n.label)); }); s2.value= path.length>=2?String(path[1]):firstEnabledIdx(l1.children); }
     else { s2.classList.add('hidden'); s2.innerHTML=''; }
     const l2= (l1&&l1.children&&path.length>=2)? l1.children[path[1]] : null;
     const s3=$('layer3');
-    if(l2&&l2.children){ s3.classList.remove('hidden'); s3.innerHTML=''; l2.children.forEach((n,k)=>s3.appendChild(lopt(String(k),n.label))); s3.value= path.length>=3?String(path[2]):'0'; }
+    if(l2&&l2.children){ s3.classList.remove('hidden'); s3.innerHTML=''; l2.children.forEach((n,k)=>{ if(nodeEnabled(n)) s3.appendChild(lopt(String(k),n.label)); }); s3.value= path.length>=3?String(path[2]):firstEnabledIdx(l2.children); }
     else { s3.classList.add('hidden'); s3.innerHTML=''; }
   }
   function onLayer1(){ const v=$('layer1').value; if(v==='none'){ switchService('none'); return; } const node=LAYOUT[+v]; switchService(node.children?firstLeaf(node):node.service); }
@@ -466,6 +489,7 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
   function emptyServices(){ const o={}; SERVICES.forEach(s=>o[s.key]={routes:[],entries:[],target:null}); return o; }
   function commitActive(){ if(active&&active!=='none'&&services[active]){ services[active].routes=routes; services[active].entries=entries; } }
   let services=emptyServices();
+  let scope=null;   // array of enabled service keys for this project; null = all (legacy)
   let active='roadworks';
   let routes=[], entries=[];
   let curStages=[], curColors=[], curMax=1;
@@ -490,23 +514,27 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
   function legacyEntries(o){ const out=[]; const map={}; if(o.stages) o.stages.forEach(x=>map[x.id]={sL:x.sL||0,dL:x.dL,sR:x.sR||0,dR:x.dR}); else if(o.segments) o.segments.forEach(x=>map[x.id]={sL:x.stage||0,dL:x.date,both:true}); (o.routes||[]).forEach(r=>{ const iv=r.interval||200,span=r.end-r.start,n=Math.max(1,Math.ceil(span/iv)); for(let k=0;k<n;k++){ const m=map[r.id+':'+k]; if(!m)continue; const from=r.start+k*iv,to=Math.min(r.start+(k+1)*iv,r.end); if(m.both){ if(m.sL>0)out.push(mkEntry('B',from,to,m.sL,m.dL,r.id)); } else { if(m.sL>0)out.push(mkEntry('L',from,to,m.sL,m.dL,r.id)); if(m.sR>0)out.push(mkEntry('R',from,to,m.sR,m.dR,r.id)); } } }); return out; }
   function applyData(o,keepActive){
     showLabels= typeof o.showLabels==='boolean'?o.showLabels:showLabels;
+    scope= Array.isArray(o.scope)? o.scope.slice() : null;
     services=emptyServices();
     if(o.services){ Object.keys(o.services).forEach(k=>{ if(services[k])services[k]={routes:o.services[k].routes||[],entries:o.services[k].entries||[],target:o.services[k].target||null}; }); }
     else { services['roadworks']={routes:o.routes||[], entries:(o.entries||legacyEntries(o))}; }
     let mx=0; Object.values(services).forEach(s=>s.entries.forEach(e=>{ const n=parseInt(String(e.id).slice(1))||0; if(n>mx)mx=n; })); eseq=mx+1;
     const want = keepActive? active : ((o.active && (o.active==='none'||services[o.active]))?o.active:'roadworks');
-    active=want; loadActiveRefs();
+    active=want;
+    if(active!=='none' && scope!==null && !inScope(active)) active=firstScopedKey();
+    loadActiveRefs();
   }
   async function loadAll(){
-    showSpin(true,'Loading…'); let promote=false;
+    showSpin(true,'Loading…'); let promote=false, hadData=false;
     try{ const im=await getMig(IMG_KEY); if(im){ await setImage(im.value, im.promote); } }catch(e){}
-    try{ const d=await getMig(DATA_KEY); if(d){ applyData(JSON.parse(d.value)); if(d.promote)promote=true; } }catch(e){}
+    try{ const d=await getMig(DATA_KEY); if(d){ hadData=true; applyData(JSON.parse(d.value)); if(d.promote)promote=true; } }catch(e){}
     showSpin(false); refreshUI(); fit(); render();
     if(promote){ await saveData(); }
     const ok=await probeShared(); if(!ok){ const w=document.querySelector('.esub'); if(w)w.textContent='Saving is disabled in this browser — local storage is unavailable. Your routes and progress will not persist after you close the tab.'; showBar('Storage unavailable — changes will NOT be saved in this browser.',[['OK',hideBar,true]]); }
+    if(!hadData && scope===null && editMode){ openServicePicker(true); }
   }
   async function syncNow(){ showSpin(true,'Syncing…'); const ok=await probeShared(); if(!ok){ showSpin(false); flashBar('Local storage is unavailable in this browser'); return; } let got=false; try{ const d=await window.storage.get(DATA_KEY,true); if(d&&d.value){ lastDataStr=d.value; applyData(JSON.parse(d.value),true); got=true; } }catch(e){} try{ const im=await window.storage.get(IMG_KEY,true); if(im&&im.value&&im.value!==imgUrl) await setImage(im.value,false); }catch(e){} showSpin(false); refreshUI(); render(); flashBar(got?('Loaded · '+routes.length+' routes · '+entries.length+' entries on '+(svcOf(active)?svcOf(active).name:'—')):'No saved data found'); }
-  async function saveData(){ commitActive(); const s=JSON.stringify({active,showLabels,services}); lastDataStr=s; try{ await window.storage.set(DATA_KEY,s,true);}catch(e){} try{ await window.storage.set(DATA_KEY,s,false);}catch(e){} }
+  async function saveData(){ commitActive(); const s=JSON.stringify({active,showLabels,services,scope}); lastDataStr=s; try{ await window.storage.set(DATA_KEY,s,true);}catch(e){} try{ await window.storage.set(DATA_KEY,s,false);}catch(e){} }
   function mkEntry(side,from,to,stage,date,routeId,by){ const s=eseq++; return {id:'e'+s,seq:s,routeId,side,from,to,stage,date:date||null,by:by||null}; }
 
   // ---------- image ----------
@@ -627,6 +655,11 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
 
   // ---------- target quantity (#3) ----------
   function saveTarget(){ if(active==='none'||!services[active])return; const q=$('qtyTarget').value, u=$('qtyUnit').value.trim(); services[active].target={qty: q===''?null:Number(q), unit:u||null}; saveData(); refreshUI(); }
+
+  // ----- service picker (project scope) -----
+  function buildPickerList(isChecked){ const wrap=$('spList'); wrap.innerHTML=''; const units=scopeUnits(); let lastCat=null; units.forEach((u,idx)=>{ if(u.cat!==lastCat){ const h=document.createElement('div'); h.className='spcat'; h.textContent=u.cat; wrap.appendChild(h); lastCat=u.cat; } const row=document.createElement('label'); row.className='sprow'; const cb=document.createElement('input'); cb.type='checkbox'; cb.dataset.idx=idx; cb.checked=isChecked(u); const sp=document.createElement('span'); sp.textContent=u.label; row.append(cb,sp); wrap.appendChild(row); }); wrap._units=units; }
+  function openServicePicker(isNew){ $('spTitle').textContent= isNew?'Select services in this project':'Manage project services'; $('spErr').textContent=''; const isChecked= isNew? (()=>false) : (u=>u.keys.every(inScope)); buildPickerList(isChecked); $('svcPicker').classList.remove('hidden'); }
+  function savePicker(){ const wrap=$('spList'), units=wrap._units, set=new Set(); wrap.querySelectorAll('input[type=checkbox]').forEach(cb=>{ if(cb.checked) units[+cb.dataset.idx].keys.forEach(k=>set.add(k)); }); scope=[...set]; if(active!=='none' && !inScope(active)){ active=firstScopedKey(); loadActiveRefs(); } $('svcPicker').classList.add('hidden'); saveData(); refreshUI(); render(); syncControls(); }
   const fmtN=n=>Math.round(n||0).toLocaleString();
   // Installed = built through the last PHYSICAL activity (the phase before a
   // final "Complete" sign-off, if the template has one). Cumulative, so it
@@ -729,9 +762,9 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
   function exportBoard(){ commitActive(); const blob={v:2,image:imgUrl||null,active,showLabels,services}; triggerDownload('infra-progress-board-'+new Date().toISOString().slice(0,10)+'.json', URL.createObjectURL(new Blob([JSON.stringify(blob)],{type:'application/json'}))); }
   async function importBoard(file){ if(!file)return; showSpin(true,'Importing…'); try{ const txt=await file.text(); const o=JSON.parse(txt); if(o.image) await setImage(o.image,true); applyData(o); await saveData(); try{ if(imgUrl)await window.storage.set(IMG_KEY,imgUrl,false); }catch(e){} refreshUI(); fit(); render(); syncControls(); flashBar('Board imported'); }catch(e){ flashBar('Import failed — not a valid board file'); } showSpin(false); }
 
-  async function resetAll(){ if(!await uiConfirm('Reset everything','Reset the drawing and ALL services (routes and progress for every discipline)? This cannot be undone.'))return; services=emptyServices(); active='roadworks'; loadActiveRefs(); img=null; imgUrl=null; for(const sh of [true,false]){ try{await window.storage.delete(IMG_KEY,sh);}catch(e){} try{await window.storage.delete(DATA_KEY,sh);}catch(e){} } $('empty').classList.remove('hidden'); syncControls(); refreshUI(); render(); }
+  async function resetAll(){ if(!await uiConfirm('Reset everything','Reset the drawing and ALL services (routes and progress for every discipline)? This cannot be undone.'))return; services=emptyServices(); scope=null; active='roadworks'; loadActiveRefs(); img=null; imgUrl=null; for(const sh of [true,false]){ try{await window.storage.delete(IMG_KEY,sh);}catch(e){} try{await window.storage.delete(DATA_KEY,sh);}catch(e){} } $('empty').classList.remove('hidden'); syncControls(); refreshUI(); render(); }
 
-  function syncControls(){ const hasImg=!!img, canEdit=hasImg&&active!=='none'&&editMode; $('btnRoute').disabled=!canEdit; $('btnUpdate').disabled=!canEdit; $('btnFit').disabled=!hasImg; $('btnLabels').disabled=!hasImg; $('btnExport').disabled=!hasImg; $('btnReport').disabled=false; $('btnCsv').disabled=false; $('btnLoad').disabled=!editMode; const l2=$('btnLoad2'); if(l2)l2.disabled=!editMode; $('btnReset').disabled=!editMode; }
+  function syncControls(){ const hasImg=!!img, canEdit=hasImg&&active!=='none'&&editMode; $('btnRoute').disabled=!canEdit; $('btnUpdate').disabled=!canEdit; $('btnFit').disabled=!hasImg; $('btnLabels').disabled=!hasImg; $('btnExport').disabled=!hasImg; $('btnReport').disabled=false; $('btnCsv').disabled=false; $('btnLoad').disabled=!editMode; const l2=$('btnLoad2'); if(l2)l2.disabled=!editMode; $('btnReset').disabled=!editMode; $('btnServices').disabled=!editMode; }
   const showSpin=(on,txt)=>{ if(txt)$('spinTxt').textContent=txt; $('spinner').classList.toggle('hidden',!on); };
   function triggerDownload(filename,href){ const a=document.createElement('a'); a.href=href; a.download=filename; a.style.display='none'; document.body.appendChild(a); a.click(); setTimeout(()=>{ try{ a.remove(); if(String(href).slice(0,5)==='blob:')URL.revokeObjectURL(href); }catch(e){} },1500); }
 
@@ -746,6 +779,10 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
   $('btnMode').onclick=toggleMode;
   $('whoLbl').onclick=async()=>{ const n=await uiPrompt('Your name','This name is attached to the progress updates you make.',userName); if(n!=null)setUserName(n); };
   $('qtyTarget').onchange=saveTarget; $('qtyUnit').onchange=saveTarget;
+  $('btnServices').onclick=()=>{ if(editMode) openServicePicker(false); };
+  $('spCancel').onclick=()=>$('svcPicker').classList.add('hidden'); $('spSave').onclick=savePicker;
+  $('spAll').onclick=()=>$('spList').querySelectorAll('input[type=checkbox]').forEach(c=>c.checked=true);
+  $('spNone').onclick=()=>$('spList').querySelectorAll('input[type=checkbox]').forEach(c=>c.checked=false);
   $('rCancel').onclick=()=>$('routeModal').classList.add('hidden'); $('rStartTrace').onclick=beginTrace;
   $('mCancel').onclick=()=>$('modal').classList.add('hidden'); $('mSave').onclick=saveEntry; $('mPick').onclick=startPick;
   [...$('mSide').children].forEach(b=>b.onclick=()=>setSide(b.dataset.s));
