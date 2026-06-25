@@ -38,6 +38,7 @@
       <div class="grow"></div>
       <button id="btnReset" class="danger">Reset</button>
       <input type="file" id="fileInput" accept="image/*" hidden>
+      <input type="file" id="detectInput" accept="image/*" hidden>
     </div>
   </div>
 
@@ -131,7 +132,8 @@
   <div id="detectModal" class="ov hidden">
     <div class="mbox">
       <div class="mtitle">Auto-detect routes</div>
-      <div class="muted" style="margin-bottom:12px;font-size:12.5px;line-height:1.45">Detect coloured network lines on the loaded drawing and add them as routes for <b id="dtSvc"></b>. Works best when the lines are a distinct solid colour.</div>
+      <div class="muted" style="margin-bottom:10px;font-size:12.5px;line-height:1.45">Detecting coloured network lines for <b id="dtSvc"></b> on this layout's drawing. Works best when the lines are a distinct solid colour.</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:12px;color:#6b7280"><span id="dtDrawing" style="flex:1">Drawing loaded for this layout.</span><button id="dtChange" class="ghost" type="button">Change drawing</button></div>
       <label>Line colour
         <div style="display:flex;gap:8px;align-items:center;margin-top:5px">
           <span id="dtSwatch" style="width:36px;height:26px;border-radius:6px;border:1px solid #d1d5db;background:transparent;font-size:10px;display:flex;align-items:center;justify-content:center;color:#9aa1ac">none</span>
@@ -152,7 +154,7 @@
       <div class="rvhead"><span></span><span>Name</span><span>Start</span><span>End</span></div>
       <div id="rvList" style="max-height:46vh;overflow-y:auto"></div>
       <div class="merr" id="rvErr"></div>
-      <div class="mbtns"><button id="rvCancel" class="ghost">Cancel</button><button id="rvAdd">Add routes</button></div>
+      <div class="mbtns"><button id="rvMin" class="ghost">▾ Minimize to review</button><span style="flex:1"></span><button id="rvCancel" class="ghost">Cancel</button><button id="rvAdd">Add routes</button></div>
     </div>
   </div>
 
@@ -523,7 +525,7 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
   function onLayer2(){ const node=LAYOUT[+$('layer1').value].children[+$('layer2').value]; switchService(node.children?firstLeaf(node):node.service); }
   function onLayer3(){ const node=LAYOUT[+$('layer1').value].children[+$('layer2').value].children[+$('layer3').value]; switchService(node.service); }
 
-  function emptyServices(){ const o={}; SERVICES.forEach(s=>o[s.key]={routes:[],entries:[],target:null}); return o; }
+  function emptyServices(){ const o={}; SERVICES.forEach(s=>o[s.key]={routes:[],entries:[],target:null,hasImage:false}); return o; }
   function commitActive(){ if(active&&active!=='none'&&services[active]){ services[active].routes=routes; services[active].entries=entries; } }
   let services=emptyServices();
   let scope=null;   // array of enabled service keys for this project; null = all (legacy)
@@ -535,6 +537,7 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
   let editMode=(()=>{try{return localStorage.getItem('rpt:editmode')!=='0';}catch(e){return true;}})();
   const isCountSvc=k=>/_(mh|ch|fnd)$/.test(k);
   let img=null, imgUrl=null;
+  let baseImg=null, baseUrl=null; const svcImgCache={}; let _shownImg=null, pendingOpenDetect=false;
   let scale=1, offX=0, offY=0;
   let mode='idle', trace=null, pick=null, curSide='B', eseq=1, lastDataStr=null;
   let pickedColor=null, detected=null, previewDetected=false, srcCanvas=null, srcCtx=null;
@@ -554,7 +557,7 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
     showLabels= typeof o.showLabels==='boolean'?o.showLabels:showLabels;
     scope= Array.isArray(o.scope)? o.scope.slice() : null;
     services=emptyServices();
-    if(o.services){ Object.keys(o.services).forEach(k=>{ if(services[k])services[k]={routes:o.services[k].routes||[],entries:o.services[k].entries||[],target:o.services[k].target||null}; }); }
+    if(o.services){ Object.keys(o.services).forEach(k=>{ if(services[k])services[k]={routes:o.services[k].routes||[],entries:o.services[k].entries||[],target:o.services[k].target||null,hasImage:!!o.services[k].hasImage}; }); }
     else { services['roadworks']={routes:o.routes||[], entries:(o.entries||legacyEntries(o))}; }
     let mx=0; Object.values(services).forEach(s=>s.entries.forEach(e=>{ const n=parseInt(String(e.id).slice(1))||0; if(n>mx)mx=n; })); eseq=mx+1;
     const want = keepActive? active : ((o.active && (o.active==='none'||services[o.active]))?o.active:'roadworks');
@@ -564,14 +567,16 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
   }
   async function loadAll(){
     showSpin(true,'Loading…'); let promote=false, hadData=false;
-    try{ const im=await getMig(IMG_KEY); if(im){ await setImage(im.value, im.promote); } }catch(e){}
+    try{ const im=await getMig(IMG_KEY); if(im){ await setBaseImage(im.value, im.promote); } }catch(e){}
     try{ const d=await getMig(DATA_KEY); if(d){ hadData=true; applyData(JSON.parse(d.value)); if(d.promote)promote=true; } }catch(e){}
+    applyDisplayed();
+    if(active!=='none'&&services[active]&&services[active].hasImage) await loadServiceImage(active);
     showSpin(false); refreshUI(); fit(); render();
     if(promote){ await saveData(); }
     const ok=await probeShared(); if(!ok){ const w=document.querySelector('.esub'); if(w)w.textContent='Saving is disabled in this browser — local storage is unavailable. Your routes and progress will not persist after you close the tab.'; showBar('Storage unavailable — changes will NOT be saved in this browser.',[['OK',hideBar,true]]); }
     if(!hadData && scope===null && editMode){ openServicePicker(true); }
   }
-  async function syncNow(){ showSpin(true,'Syncing…'); const ok=await probeShared(); if(!ok){ showSpin(false); flashBar('Local storage is unavailable in this browser'); return; } let got=false; try{ const d=await window.storage.get(DATA_KEY,true); if(d&&d.value){ lastDataStr=d.value; applyData(JSON.parse(d.value),true); got=true; } }catch(e){} try{ const im=await window.storage.get(IMG_KEY,true); if(im&&im.value&&im.value!==imgUrl) await setImage(im.value,false); }catch(e){} showSpin(false); refreshUI(); render(); flashBar(got?('Loaded · '+routes.length+' routes · '+entries.length+' entries on '+(svcOf(active)?svcOf(active).name:'—')):'No saved data found'); }
+  async function syncNow(){ showSpin(true,'Syncing…'); const ok=await probeShared(); if(!ok){ showSpin(false); flashBar('Local storage is unavailable in this browser'); return; } let got=false; try{ const d=await window.storage.get(DATA_KEY,true); if(d&&d.value){ lastDataStr=d.value; applyData(JSON.parse(d.value),true); got=true; } }catch(e){} try{ const im=await window.storage.get(IMG_KEY,true); if(im&&im.value&&im.value!==baseUrl) await setBaseImage(im.value,false); }catch(e){} delete svcImgCache[active]; await loadServiceImage(active); applyDisplayed(); showSpin(false); refreshUI(); fit(); render(); flashBar(got?('Loaded · '+routes.length+' routes · '+entries.length+' entries on '+(svcOf(active)?svcOf(active).name:'—')):'No saved data found'); }
   async function saveData(){ commitActive(); const s=JSON.stringify({active,showLabels,services,scope}); lastDataStr=s; try{ await window.storage.set(DATA_KEY,s,true);}catch(e){} try{ await window.storage.set(DATA_KEY,s,false);}catch(e){} }
   function mkEntry(side,from,to,stage,date,routeId,by){ const s=eseq++; return {id:'e'+s,seq:s,routeId,side,from,to,stage,date:date||null,by:by||null}; }
 
@@ -579,8 +584,15 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
   const readFile=f=>new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=()=>rej(r.error); r.readAsDataURL(f); });
   function downscale(url,maxDim,fmt){ return new Promise(res=>{ const i=new Image(); i.onload=()=>{ let w=i.width,h=i.height; const s=Math.min(1,maxDim/Math.max(w,h)); w=Math.round(w*s);h=Math.round(h*s); const c=document.createElement('canvas');c.width=w;c.height=h; const x=c.getContext('2d'); x.fillStyle='#fff';x.fillRect(0,0,w,h); x.drawImage(i,0,0,w,h); res(c.toDataURL(fmt==='jpeg'?'image/jpeg':'image/png',fmt==='jpeg'?0.82:undefined)); }; i.src=url; }); }
   async function prepareForStore(u){ if(u.length<=4500000)return u; let v=await downscale(u,2000,'png'); if(v.length<=4500000)return v; v=await downscale(u,1600,'jpeg'); if(v.length<=4500000)return v; return await downscale(u,1200,'jpeg'); }
-  function setImage(url,store){ return new Promise(async res=>{ const i=new Image(); i.onload=async()=>{ img=i; imgUrl=url; $('empty').classList.add('hidden'); syncControls(); fit(); render(); if(store){ try{ const su=await prepareForStore(url); imgUrl=su; try{await window.storage.set(IMG_KEY,su,true);}catch(e){} try{await window.storage.set(IMG_KEY,su,false);}catch(e){} }catch(e){console.warn(e);} } res(); }; i.onerror=()=>res(); i.src=url; }); }
-  async function onFile(f){ if(!f)return; showSpin(true,'Saving…'); try{ const url=await readFile(f); await setImage(url,true);}catch(e){} showSpin(false); }
+  // Each layout (service) can have its own drawing, stored under rpt:image:<key>.
+  // The shared base drawing (rpt:image) is the fallback for layouts without one.
+  const imgKeyFor=key=>'rpt:image:'+key;
+  const loadImageEl=url=>new Promise(res=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=()=>res(null); i.src=url; });
+  function applyDisplayed(){ const c=(active!=='none'&&svcImgCache[active])?svcImgCache[active]:(baseImg?{img:baseImg,url:baseUrl}:null); const ni=c?c.img:null; const changed= ni!==_shownImg; _shownImg=ni; img=ni; imgUrl=c?c.url:null; srcCanvas=null; $('empty').classList.toggle('hidden', !!img); syncControls(); return changed; }
+  function setBaseImage(url,store){ return new Promise(async res=>{ const i=new Image(); i.onload=async()=>{ baseImg=i; baseUrl=url; if(applyDisplayed()){ fit(); render(); } if(store){ try{ const su=await prepareForStore(url); baseUrl=su; if(_shownImg===i)imgUrl=su; try{await window.storage.set(IMG_KEY,su,true);}catch(e){} try{await window.storage.set(IMG_KEY,su,false);}catch(e){} }catch(e){console.warn(e);} } res(); }; i.onerror=()=>res(); i.src=url; }); }
+  async function setServiceImage(key,url,store){ const el=await loadImageEl(url); if(!el)return; svcImgCache[key]={img:el,url}; if(!services[key])services[key]={routes:[],entries:[],target:null,hasImage:false}; services[key].hasImage=true; if(key===active){ applyDisplayed(); fit(); render(); } if(store){ try{ const su=await prepareForStore(url); svcImgCache[key].url=su; if(key===active&&_shownImg===el)imgUrl=su; try{await window.storage.set(imgKeyFor(key),su,true);}catch(e){} try{await window.storage.set(imgKeyFor(key),su,false);}catch(e){} }catch(e){console.warn(e);} await saveData(); } }
+  async function loadServiceImage(key){ if(key==='none'||!services[key]||!services[key].hasImage||svcImgCache[key])return; try{ let r=await window.storage.get(imgKeyFor(key),true); if(!(r&&r.value)) r=await window.storage.get(imgKeyFor(key),false); if(r&&r.value){ const el=await loadImageEl(r.value); if(el){ svcImgCache[key]={img:el,url:r.value}; if(key===active){ if(applyDisplayed())fit(); render(); } } } }catch(e){} }
+  async function onFile(f){ if(!f)return; showSpin(true,'Saving…'); try{ const url=await readFile(f); await setBaseImage(url,true);}catch(e){} showSpin(false); }
 
   // ---------- geometry ----------
   const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
@@ -645,7 +657,7 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
   const hideReadout=()=>$('readout').classList.add('hidden');
 
   // ---------- service switch ----------
-  function switchService(key){ if(mode!=='idle'){ cancelTrace(); cancelPick(); } commitActive(); active=key; loadActiveRefs(); saveData(); refreshUI(); render(); syncControls(); }
+  function switchService(key){ if(mode!=='idle'){ cancelTrace(); cancelPick(); } commitActive(); active=key; loadActiveRefs(); if(applyDisplayed())fit(); saveData(); refreshUI(); render(); syncControls(); if(active!=='none'&&services[active]&&services[active].hasImage&&!svcImgCache[active]) loadServiceImage(active); }
 
   // ---------- routes ----------
   function startRoute(){ const s=svcOf(active); $('routeTitle').textContent='New '+(s?s.name:'')+' route'; $('rErr').textContent=''; $('rName').value=''; $('routeModal').classList.remove('hidden'); $('rName').focus(); }
@@ -800,11 +812,11 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
     return c; }
   function exportPng(){ const c=buildAnnotatedCanvas(); if(!c)return; triggerDownload((svcOf(active)?svcOf(active).key:'base')+'-progress-'+new Date().toISOString().slice(0,10)+'.png', c.toDataURL('image/png')); }
   function exportBoard(){ commitActive(); const blob={v:2,image:imgUrl||null,active,showLabels,services}; triggerDownload('infra-progress-board-'+new Date().toISOString().slice(0,10)+'.json', URL.createObjectURL(new Blob([JSON.stringify(blob)],{type:'application/json'}))); }
-  async function importBoard(file){ if(!file)return; showSpin(true,'Importing…'); try{ const txt=await file.text(); const o=JSON.parse(txt); if(o.image) await setImage(o.image,true); applyData(o); await saveData(); try{ if(imgUrl)await window.storage.set(IMG_KEY,imgUrl,false); }catch(e){} refreshUI(); fit(); render(); syncControls(); flashBar('Board imported'); }catch(e){ flashBar('Import failed — not a valid board file'); } showSpin(false); }
+  async function importBoard(file){ if(!file)return; showSpin(true,'Importing…'); try{ const txt=await file.text(); const o=JSON.parse(txt); if(o.image) await setBaseImage(o.image,true); applyData(o); await saveData(); try{ if(imgUrl)await window.storage.set(IMG_KEY,imgUrl,false); }catch(e){} refreshUI(); fit(); render(); syncControls(); flashBar('Board imported'); }catch(e){ flashBar('Import failed — not a valid board file'); } showSpin(false); }
 
-  async function resetAll(){ if(!await uiConfirm('Reset everything','Reset the drawing and ALL services (routes and progress for every discipline)? This cannot be undone.'))return; services=emptyServices(); scope=null; active='roadworks'; loadActiveRefs(); img=null; imgUrl=null; for(const sh of [true,false]){ try{await window.storage.delete(IMG_KEY,sh);}catch(e){} try{await window.storage.delete(DATA_KEY,sh);}catch(e){} } $('empty').classList.remove('hidden'); syncControls(); refreshUI(); render(); }
+  async function resetAll(){ if(!await uiConfirm('Reset everything','Reset the drawing and ALL services (routes, progress and per-layout drawings for every discipline)? This cannot be undone.'))return; const imgKeys=Object.keys(services).filter(k=>services[k]&&services[k].hasImage); services=emptyServices(); scope=null; active='roadworks'; loadActiveRefs(); img=null; imgUrl=null; baseImg=null; baseUrl=null; _shownImg=null; for(const k in svcImgCache)delete svcImgCache[k]; for(const sh of [true,false]){ try{await window.storage.delete(IMG_KEY,sh);}catch(e){} try{await window.storage.delete(DATA_KEY,sh);}catch(e){} for(const k of imgKeys){ try{await window.storage.delete(imgKeyFor(k),sh);}catch(e){} } } $('empty').classList.remove('hidden'); syncControls(); refreshUI(); render(); }
 
-  function syncControls(){ const hasImg=!!img, canEdit=hasImg&&active!=='none'&&editMode; $('btnRoute').disabled=!canEdit; $('btnDetect').disabled=!canEdit; $('btnUpdate').disabled=!canEdit; $('btnFit').disabled=!hasImg; $('btnLabels').disabled=!hasImg; $('btnExport').disabled=!hasImg; $('btnReport').disabled=false; $('btnCsv').disabled=false; $('btnLoad').disabled=!editMode; const l2=$('btnLoad2'); if(l2)l2.disabled=!editMode; $('btnReset').disabled=!editMode; $('btnServices').disabled=!editMode; }
+  function syncControls(){ const hasImg=!!img, canEdit=hasImg&&active!=='none'&&editMode; $('btnRoute').disabled=!canEdit; $('btnDetect').disabled=!(active!=='none'&&editMode); $('btnUpdate').disabled=!canEdit; $('btnFit').disabled=!hasImg; $('btnLabels').disabled=!hasImg; $('btnExport').disabled=!hasImg; $('btnReport').disabled=false; $('btnCsv').disabled=false; $('btnLoad').disabled=!editMode; const l2=$('btnLoad2'); if(l2)l2.disabled=!editMode; $('btnReset').disabled=!editMode; $('btnServices').disabled=!editMode; }
   const showSpin=(on,txt)=>{ if(txt)$('spinTxt').textContent=txt; $('spinner').classList.toggle('hidden',!on); };
   function triggerDownload(filename,href){ const a=document.createElement('a'); a.href=href; a.download=filename; a.style.display='none'; document.body.appendChild(a); a.click(); setTimeout(()=>{ try{ a.remove(); if(String(href).slice(0,5)==='blob:')URL.revokeObjectURL(href); }catch(e){} },1500); }
 
@@ -812,7 +824,10 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
   function ensureSrc(){ if(!img)return null; if(!srcCanvas||srcCanvas.width!==img.width||srcCanvas.height!==img.height){ srcCanvas=document.createElement('canvas'); srcCanvas.width=img.width; srcCanvas.height=img.height; srcCtx=srcCanvas.getContext('2d',{willReadFrequently:true}); srcCtx.drawImage(img,0,0); } return srcCanvas; }
   function sampleColorAt(ix,iy){ if(!ensureSrc())return null; ix=Math.round(ix); iy=Math.round(iy); if(ix<0||iy<0||ix>=img.width||iy>=img.height)return null; const d=srcCtx.getImageData(ix,iy,1,1).data; return [d[0],d[1],d[2]]; }
 
-  function openDetect(){ if(!img||active==='none')return; pickedColor=null; $('dtSvc').textContent=svcOf(active)?svcOf(active).name:''; $('dtSwatch').style.background='transparent'; $('dtSwatch').textContent='none'; $('dtTol').value=60; $('dtTolV').textContent='60'; $('dtOcr').checked=true; $('dtErr').textContent=''; $('detectModal').classList.remove('hidden'); }
+  // Auto-detect prompts for this layout's drawing (or reuses an existing one).
+  function startDetect(){ if(active==='none')return; if(svcImgCache[active]||(services[active]&&services[active].hasImage)){ pendingOpenDetect=false; openDetect(); } else { pendingOpenDetect=true; $('detectInput').click(); } }
+  async function onDetectFile(f){ if(!f)return; showSpin(true,'Loading drawing…'); try{ const url=await readFile(f); await setServiceImage(active,url,true);}catch(e){} showSpin(false); openDetect(); pendingOpenDetect=false; }
+  function openDetect(){ if(active==='none')return; if(!img&&services[active]&&services[active].hasImage){ /* image still loading */ } pickedColor=null; $('dtSvc').textContent=svcOf(active)?svcOf(active).name:''; $('dtSwatch').style.background='transparent'; $('dtSwatch').textContent='none'; $('dtTol').value=60; $('dtTolV').textContent='60'; $('dtOcr').checked=true; $('dtErr').textContent=''; $('detectModal').classList.remove('hidden'); }
   function startEyedrop(){ $('detectModal').classList.add('hidden'); mode='eyedrop'; cv.classList.add('picking'); showBar('Click a network line on the drawing to sample its colour.',[['Cancel',cancelEyedrop,true]]); }
   function cancelEyedrop(){ if(mode!=='eyedrop')return; mode='idle'; cv.classList.remove('picking'); hideBar(); $('detectModal').classList.remove('hidden'); }
   function onEyedrop(ip){ const c=sampleColorAt(ip.x,ip.y); mode='idle'; cv.classList.remove('picking'); hideBar(); if(c){ pickedColor=c; $('dtSwatch').style.background='rgb('+c[0]+','+c[1]+','+c[2]+')'; $('dtSwatch').textContent=''; } $('detectModal').classList.remove('hidden'); }
@@ -832,8 +847,10 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
   async function runDetect(){ if(!pickedColor){ $('dtErr').textContent='Pick the line colour first.'; return; } const tol=parseInt($('dtTol').value,10)||60, doOcr=$('dtOcr').checked; $('detectModal').classList.add('hidden'); showSpin(true,'Detecting lines…'); await new Promise(r=>setTimeout(r,30)); let result; try{ result=detectRoutes(pickedColor,tol); }catch(e){ console.warn(e); showSpin(false); flashBar('Detection failed on this image'); $('detectModal').classList.remove('hidden'); return; } if(!result.routes.length){ showSpin(false); $('dtErr').textContent='No lines found in that colour — try a higher tolerance.'; $('detectModal').classList.remove('hidden'); return; } let labels=[]; if(doOcr){ showSpin(true,'Reading chainages (first run downloads the OCR engine)…'); try{ labels=await ocrChainages(ensureSrc()); }catch(e){ console.warn(e); } } const chain=assignChainage(result.routes,labels); const svcN=svcOf(active)?svcOf(active).name:'Route'; detected=result.routes.map((poly,i)=>({points:poly,name:svcN+' '+(routes.length+i+1),start:chain[i].start,end:chain[i].end,include:true})); previewDetected=true; showSpin(false); render(); openReview(labels.length); }
 
   function openReview(nLabels){ const wrap=$('rvList'); wrap.innerHTML=''; $('rvErr').textContent=''; detected.forEach(d=>{ const row=document.createElement('div'); row.className='rvrow'; const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=d.include!==false; cb.onchange=()=>{ d.include=cb.checked; render(); }; const nm=document.createElement('input'); nm.type='text'; nm.className='rvname'; nm.value=d.name; nm.oninput=()=>{ d.name=nm.value; }; const st=document.createElement('input'); st.type='number'; st.className='rvch'; st.value=Math.round(d.start); st.oninput=()=>{ d.start=parseFloat(st.value); }; const en=document.createElement('input'); en.type='number'; en.className='rvch'; en.value=Math.round(d.end); en.oninput=()=>{ d.end=parseFloat(en.value); }; row.append(cb,nm,st,en); wrap.appendChild(row); }); $('rvMsg').textContent= detected.length+' line'+(detected.length>1?'s':'')+' detected · '+(nLabels? (nLabels+' chainage label'+(nLabels>1?'s':'')+' read — check them'):'chainages not read, enter below'); $('reviewModal').classList.remove('hidden'); }
-  function cancelReview(){ $('reviewModal').classList.add('hidden'); previewDetected=false; detected=null; render(); }
-  function commitDetected(){ let added=0; const base=Date.now(); detected.forEach(d=>{ if(d.include===false)return; let s=parseFloat(d.start)||0, e=parseFloat(d.end); if(!(e>s))e=s+Math.max(1,Math.round(polyLen(d.points))); routes.push({id:'r'+base+'_'+(added),name:(d.name||'Route').trim()||'Route',start:s,end:e,points:d.points,by:userName||null,createdAt:new Date().toISOString().slice(0,10),auto:true}); added++; }); if(!added){ $('rvErr').textContent='Tick at least one route to add.'; return; } $('reviewModal').classList.add('hidden'); previewDetected=false; detected=null; saveData(); refreshUI(); render(); flashBar(added+' route'+(added!==1?'s':'')+' added'); }
+  function minimizeReview(){ $('reviewModal').classList.add('hidden'); showBar('Reviewing '+(detected?detected.length:0)+' detected route'+((detected&&detected.length!==1)?'s':'')+' on the drawing — pan/zoom to check, then resume.',[['Resume review',resumeReview],['Add routes',commitDetected],['Cancel',cancelReview,true]]); }
+  function resumeReview(){ hideBar(); if(detected)$('reviewModal').classList.remove('hidden'); }
+  function cancelReview(){ $('reviewModal').classList.add('hidden'); hideBar(); previewDetected=false; detected=null; render(); }
+  function commitDetected(){ let added=0; const base=Date.now(); detected.forEach(d=>{ if(d.include===false)return; let s=parseFloat(d.start)||0, e=parseFloat(d.end); if(!(e>s))e=s+Math.max(1,Math.round(polyLen(d.points))); routes.push({id:'r'+base+'_'+(added),name:(d.name||'Route').trim()||'Route',start:s,end:e,points:d.points,by:userName||null,createdAt:new Date().toISOString().slice(0,10),auto:true}); added++; }); if(!added){ $('rvErr').textContent='Tick at least one route to add.'; return; } $('reviewModal').classList.add('hidden'); hideBar(); previewDetected=false; detected=null; saveData(); refreshUI(); render(); flashBar(added+' route'+(added!==1?'s':'')+' added'); }
 
   // ---------- wire ----------
   $('btnLoad').onclick=$('btnLoad2').onclick=()=>$('fileInput').click();
@@ -847,9 +864,11 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
   $('whoLbl').onclick=async()=>{ const n=await uiPrompt('Your name','This name is attached to the progress updates you make.',userName); if(n!=null)setUserName(n); };
   $('qtyTarget').onchange=saveTarget; $('qtyUnit').onchange=saveTarget;
   $('btnServices').onclick=()=>{ if(editMode) openServicePicker(false); };
-  $('btnDetect').onclick=async()=>{ if(editMode&&img&&active!=='none'&&await requireName()) openDetect(); };
+  $('btnDetect').onclick=async()=>{ if(editMode&&active!=='none'&&await requireName()) startDetect(); };
+  $('detectInput').onchange=e=>{ const f=e.target.files[0]; e.target.value=''; onDetectFile(f); };
+  $('dtChange').onclick=()=>$('detectInput').click();
   $('dtPick').onclick=startEyedrop; $('dtCancel').onclick=()=>$('detectModal').classList.add('hidden'); $('dtRun').onclick=runDetect; $('dtTol').oninput=()=>$('dtTolV').textContent=$('dtTol').value;
-  $('rvCancel').onclick=cancelReview; $('rvAdd').onclick=commitDetected;
+  $('rvMin').onclick=minimizeReview; $('rvCancel').onclick=cancelReview; $('rvAdd').onclick=commitDetected;
   $('spCancel').onclick=()=>$('svcPicker').classList.add('hidden'); $('spSave').onclick=savePicker;
   $('spAll').onclick=()=>$('spList').querySelectorAll('input[type=checkbox]').forEach(c=>c.checked=true);
   $('spNone').onclick=()=>$('spList').querySelectorAll('input[type=checkbox]').forEach(c=>c.checked=false);
@@ -857,7 +876,7 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
   $('mCancel').onclick=()=>$('modal').classList.add('hidden'); $('mSave').onclick=saveEntry; $('mPick').onclick=startPick;
   [...$('mSide').children].forEach(b=>b.onclick=()=>setSide(b.dataset.s));
   window.addEventListener('resize',render);
-  async function pollSync(){ if(mode!=='idle')return; if(document.querySelector('.ov:not(.hidden)'))return; try{ const d=await window.storage.get(DATA_KEY,true); if(d&&d.value&&d.value!==lastDataStr){ lastDataStr=d.value; applyData(JSON.parse(d.value),true); refreshUI(); render(); flashBar('Updated from shared board'); } const im=await window.storage.get(IMG_KEY,true); if(im&&im.value&&im.value!==imgUrl) await setImage(im.value,false); }catch(e){} }
+  async function pollSync(){ if(mode!=='idle'||previewDetected)return; if(document.querySelector('.ov:not(.hidden)'))return; try{ const d=await window.storage.get(DATA_KEY,true); if(d&&d.value&&d.value!==lastDataStr){ lastDataStr=d.value; applyData(JSON.parse(d.value),true); applyDisplayed(); await loadServiceImage(active); refreshUI(); render(); flashBar('Updated from shared board'); } const im=await window.storage.get(IMG_KEY,true); if(im&&im.value&&im.value!==baseUrl) await setBaseImage(im.value,false); if(active!=='none'&&services[active]&&services[active].hasImage){ const r=await window.storage.get(imgKeyFor(active),true); if(r&&r.value&&(!svcImgCache[active]||r.value!==svcImgCache[active].url)){ const el=await loadImageEl(r.value); if(el){ svcImgCache[active]={img:el,url:r.value}; if(applyDisplayed())fit(); render(); } } } }catch(e){} }
   setInterval(pollSync,10000);
   renderLayoutSelectors(); loadActiveRefs(); renderWho(); applyEditMode(); loadAll();
 })();
