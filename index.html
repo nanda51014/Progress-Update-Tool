@@ -25,6 +25,7 @@
       <button id="btnServices">⚙ Services…</button>
       <div class="sep"></div>
       <button id="btnRoute" disabled>+ Add route</button>
+      <button id="btnDetect" disabled>⤳ Auto-detect routes</button>
       <button id="btnUpdate" disabled>Update progress</button>
       <div class="sep"></div>
       <button id="btnFit" disabled>Fit</button>
@@ -127,6 +128,34 @@
     </div>
   </div>
 
+  <div id="detectModal" class="ov hidden">
+    <div class="mbox">
+      <div class="mtitle">Auto-detect routes</div>
+      <div class="muted" style="margin-bottom:12px;font-size:12.5px;line-height:1.45">Detect coloured network lines on the loaded drawing and add them as routes for <b id="dtSvc"></b>. Works best when the lines are a distinct solid colour.</div>
+      <label>Line colour
+        <div style="display:flex;gap:8px;align-items:center;margin-top:5px">
+          <span id="dtSwatch" style="width:36px;height:26px;border-radius:6px;border:1px solid #d1d5db;background:transparent;font-size:10px;display:flex;align-items:center;justify-content:center;color:#9aa1ac">none</span>
+          <button id="dtPick" class="ghost" type="button">Pick colour on drawing</button>
+        </div>
+      </label>
+      <label>Colour tolerance: <span id="dtTolV">60</span><input id="dtTol" type="range" min="20" max="160" value="60"></label>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:4px"><input id="dtOcr" type="checkbox" checked style="width:auto;margin-top:0"> Try to read chainages from the drawing (slower, best-effort)</label>
+      <div class="merr" id="dtErr"></div>
+      <div class="mbtns"><button id="dtCancel" class="ghost">Cancel</button><button id="dtRun">Detect</button></div>
+    </div>
+  </div>
+
+  <div id="reviewModal" class="ov hidden">
+    <div class="mbox" style="width:490px">
+      <div class="mtitle">Review detected routes</div>
+      <div class="muted" id="rvMsg" style="margin-bottom:6px;font-size:12.5px"></div>
+      <div class="rvhead"><span></span><span>Name</span><span>Start</span><span>End</span></div>
+      <div id="rvList" style="max-height:46vh;overflow-y:auto"></div>
+      <div class="merr" id="rvErr"></div>
+      <div class="mbtns"><button id="rvCancel" class="ghost">Cancel</button><button id="rvAdd">Add routes</button></div>
+    </div>
+  </div>
+
   <div id="svcPicker" class="ov hidden">
     <div class="mbox" style="width:460px">
       <div class="mtitle" id="spTitle">Select services in this project</div>
@@ -170,6 +199,14 @@
   .sprow{display:flex;align-items:center;gap:10px;padding:6px 6px;font-size:13px;cursor:pointer;border-radius:7px}
   .sprow:hover{background:#f3f4f6}
   .sprow input{width:16px;height:16px;cursor:pointer;flex:none}
+  .rvhead{display:flex;gap:8px;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:#6b7280;padding:0 2px 4px;margin-top:4px}
+  .rvhead span:nth-child(1){width:16px;flex:none}.rvhead span:nth-child(2){flex:1}.rvhead span:nth-child(3),.rvhead span:nth-child(4){width:76px;flex:none}
+  .rvrow{display:flex;align-items:center;gap:8px;padding:4px 2px}
+  .rvrow input[type=checkbox]{width:16px;height:16px;flex:none}
+  .rvname{flex:1;min-width:0}
+  .rvch{width:76px;flex:none}
+  .rvrow input[type=text],.rvrow input[type=number]{background:#fff;border:1px solid #d1d5db;border-radius:7px;color:#1f2937;padding:6px 8px;font:inherit;font-size:12.5px}
+  #dtTol{width:100%;margin-top:5px}
   button{font:inherit;font-size:13px;padding:8px 12px;border-radius:8px;border:1px solid #d1d5db;background:#ffffff;color:#374151;cursor:pointer;transition:.12s;text-align:left}
   button:hover:not(:disabled){background:#f3f4f6;border-color:#c2c8d0}
   button:disabled{opacity:.45;cursor:not-allowed}
@@ -500,6 +537,7 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
   let img=null, imgUrl=null;
   let scale=1, offX=0, offY=0;
   let mode='idle', trace=null, pick=null, curSide='B', eseq=1, lastDataStr=null;
+  let pickedColor=null, detected=null, previewDetected=false, srcCanvas=null, srcCtx=null;
 
   const $=id=>document.getElementById(id);
   const cv=$('cv'), ctx=cv.getContext('2d');
@@ -580,6 +618,7 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
     if(showLabels) routes.forEach(drawTicks);
     if(mode==='trace'&&trace&&trace.points.length){ drawPoly(trace.points,'#60a5fa',3,true); trace.points.forEach(p=>{ const s=toScreen(p); ctx.beginPath();ctx.fillStyle='#60a5fa';ctx.arc(s.x,s.y,5,0,7);ctx.fill(); }); }
     if(mode==='pick'&&pick&&pick.fromPt){ const s=toScreen(pick.fromPt); ctx.beginPath();ctx.fillStyle='#22c55e';ctx.arc(s.x,s.y,6,0,7);ctx.fill(); }
+    if(previewDetected&&detected){ detected.forEach(d=>{ if(d.include!==false){ drawPoly(d.points,'#a855f7',4); d.points.forEach(p=>{ const s=toScreen(p); ctx.beginPath(); ctx.fillStyle='#a855f7'; ctx.arc(s.x,s.y,3,0,7); ctx.fill(); }); } }); }
   }
   function drawPoly(p,color,w,dash){ if(p.length<2)return; ctx.save(); ctx.strokeStyle=color; ctx.lineWidth=w; ctx.lineJoin='round'; ctx.lineCap='round'; if(dash)ctx.setLineDash([7,6]); ctx.beginPath(); const a=toScreen(p[0]); ctx.moveTo(a.x,a.y); for(let i=1;i<p.length;i++){const q=toScreen(p[i]);ctx.lineTo(q.x,q.y);} ctx.stroke(); ctx.restore(); }
   function niceStep(span){ const raw=span/8; for(const s of [10,20,25,50,100,200,250,500,1000,2000,2500,5000,10000])if(s>=raw)return s; return 10000; }
@@ -596,6 +635,7 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
   cv.addEventListener('pointerup',e=>{ if(!down)return; const r=cv.getBoundingClientRect(); const x=e.clientX-r.left,y=e.clientY-r.top; const click=!moved; down=null; if(!click)return; const ip=toImg(x,y);
     if(mode==='trace'){ trace.points.push(ip); updateTraceMsg(); render(); }
     else if(mode==='pick'){ doPick(ip); }
+    else if(mode==='eyedrop'){ onEyedrop(ip); }
     else { showReadout(ip,x,y); }
   });
   cv.addEventListener('wheel',e=>{ if(!img)return; e.preventDefault(); const r=cv.getBoundingClientRect(); const mx=e.clientX-r.left,my=e.clientY-r.top; const f=e.deltaY<0?1.12:1/1.12; const ns=Math.max(0.05,Math.min(20,scale*f)); const wx=(mx-offX)/scale,wy=(my-offY)/scale; scale=ns; offX=mx-wx*scale; offY=my-wy*scale; render(); hideReadout(); },{passive:false});
@@ -764,9 +804,36 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
 
   async function resetAll(){ if(!await uiConfirm('Reset everything','Reset the drawing and ALL services (routes and progress for every discipline)? This cannot be undone.'))return; services=emptyServices(); scope=null; active='roadworks'; loadActiveRefs(); img=null; imgUrl=null; for(const sh of [true,false]){ try{await window.storage.delete(IMG_KEY,sh);}catch(e){} try{await window.storage.delete(DATA_KEY,sh);}catch(e){} } $('empty').classList.remove('hidden'); syncControls(); refreshUI(); render(); }
 
-  function syncControls(){ const hasImg=!!img, canEdit=hasImg&&active!=='none'&&editMode; $('btnRoute').disabled=!canEdit; $('btnUpdate').disabled=!canEdit; $('btnFit').disabled=!hasImg; $('btnLabels').disabled=!hasImg; $('btnExport').disabled=!hasImg; $('btnReport').disabled=false; $('btnCsv').disabled=false; $('btnLoad').disabled=!editMode; const l2=$('btnLoad2'); if(l2)l2.disabled=!editMode; $('btnReset').disabled=!editMode; $('btnServices').disabled=!editMode; }
+  function syncControls(){ const hasImg=!!img, canEdit=hasImg&&active!=='none'&&editMode; $('btnRoute').disabled=!canEdit; $('btnDetect').disabled=!canEdit; $('btnUpdate').disabled=!canEdit; $('btnFit').disabled=!hasImg; $('btnLabels').disabled=!hasImg; $('btnExport').disabled=!hasImg; $('btnReport').disabled=false; $('btnCsv').disabled=false; $('btnLoad').disabled=!editMode; const l2=$('btnLoad2'); if(l2)l2.disabled=!editMode; $('btnReset').disabled=!editMode; $('btnServices').disabled=!editMode; }
   const showSpin=(on,txt)=>{ if(txt)$('spinTxt').textContent=txt; $('spinner').classList.toggle('hidden',!on); };
   function triggerDownload(filename,href){ const a=document.createElement('a'); a.href=href; a.download=filename; a.style.display='none'; document.body.appendChild(a); a.click(); setTimeout(()=>{ try{ a.remove(); if(String(href).slice(0,5)==='blob:')URL.revokeObjectURL(href); }catch(e){} },1500); }
+
+  // ================= AUTO-DETECT ROUTES FROM COLOURED LINES =================
+  function ensureSrc(){ if(!img)return null; if(!srcCanvas||srcCanvas.width!==img.width||srcCanvas.height!==img.height){ srcCanvas=document.createElement('canvas'); srcCanvas.width=img.width; srcCanvas.height=img.height; srcCtx=srcCanvas.getContext('2d',{willReadFrequently:true}); srcCtx.drawImage(img,0,0); } return srcCanvas; }
+  function sampleColorAt(ix,iy){ if(!ensureSrc())return null; ix=Math.round(ix); iy=Math.round(iy); if(ix<0||iy<0||ix>=img.width||iy>=img.height)return null; const d=srcCtx.getImageData(ix,iy,1,1).data; return [d[0],d[1],d[2]]; }
+
+  function openDetect(){ if(!img||active==='none')return; pickedColor=null; $('dtSvc').textContent=svcOf(active)?svcOf(active).name:''; $('dtSwatch').style.background='transparent'; $('dtSwatch').textContent='none'; $('dtTol').value=60; $('dtTolV').textContent='60'; $('dtOcr').checked=true; $('dtErr').textContent=''; $('detectModal').classList.remove('hidden'); }
+  function startEyedrop(){ $('detectModal').classList.add('hidden'); mode='eyedrop'; cv.classList.add('picking'); showBar('Click a network line on the drawing to sample its colour.',[['Cancel',cancelEyedrop,true]]); }
+  function cancelEyedrop(){ if(mode!=='eyedrop')return; mode='idle'; cv.classList.remove('picking'); hideBar(); $('detectModal').classList.remove('hidden'); }
+  function onEyedrop(ip){ const c=sampleColorAt(ip.x,ip.y); mode='idle'; cv.classList.remove('picking'); hideBar(); if(c){ pickedColor=c; $('dtSwatch').style.background='rgb('+c[0]+','+c[1]+','+c[2]+')'; $('dtSwatch').textContent=''; } $('detectModal').classList.remove('hidden'); }
+
+  // principal-axis centreline: rotate component onto its long axis, bin along it, average each bin
+  function centerline(px,W){ const n=px.length; if(n<2)return null; const xs=new Float64Array(n),ys=new Float64Array(n); let mx=0,my=0; for(let i=0;i<n;i++){ const x=px[i]%W,y=(px[i]/W)|0; xs[i]=x;ys[i]=y;mx+=x;my+=y; } mx/=n;my/=n; let sxx=0,syy=0,sxy=0; for(let i=0;i<n;i++){ const dx=xs[i]-mx,dy=ys[i]-my; sxx+=dx*dx;syy+=dy*dy;sxy+=dx*dy; } sxx/=n;syy/=n;sxy/=n; const tr=sxx+syy,det=sxx*syy-sxy*sxy,l1=tr/2+Math.sqrt(Math.max(0,tr*tr/4-det)); let ax,ay; if(Math.abs(sxy)>1e-6){ ax=l1-syy; ay=sxy; } else { if(sxx>=syy){ax=1;ay=0;}else{ax=0;ay=1;} } const al=Math.hypot(ax,ay)||1; ax/=al;ay/=al; let tmin=Infinity,tmax=-Infinity; const ts=new Float64Array(n); for(let i=0;i<n;i++){ const t=(xs[i]-mx)*ax+(ys[i]-my)*ay; ts[i]=t; if(t<tmin)tmin=t; if(t>tmax)tmax=t; } const span=tmax-tmin; if(span<6)return null; const NB=Math.max(2,Math.min(40,Math.round(span/12))); const sx=new Float64Array(NB),sy=new Float64Array(NB),cn=new Float64Array(NB); for(let i=0;i<n;i++){ let b=Math.floor((ts[i]-tmin)/span*NB); if(b<0)b=0; if(b>=NB)b=NB-1; sx[b]+=xs[i];sy[b]+=ys[i];cn[b]++; } const poly=[]; for(let b=0;b<NB;b++){ if(cn[b]>0)poly.push({x:sx[b]/cn[b],y:sy[b]/cn[b]}); } return poly.length>=2?poly:null; }
+  const polyLen=p=>{ let L=0; for(let i=1;i<p.length;i++)L+=Math.hypot(p[i].x-p[i-1].x,p[i].y-p[i-1].y); return L; };
+
+  function detectRoutes(target,tol){ ensureSrc(); const scale=Math.min(1,1200/Math.max(img.width,img.height)); const W=Math.max(1,Math.round(img.width*scale)),H=Math.max(1,Math.round(img.height*scale)); const oc=document.createElement('canvas'); oc.width=W; oc.height=H; const ox=oc.getContext('2d',{willReadFrequently:true}); ox.drawImage(img,0,0,W,H); const data=ox.getImageData(0,0,W,H).data; const N=W*H, mask=new Uint8Array(N), tol2=tol*tol; for(let i=0;i<N;i++){ const r=data[i*4]-target[0],g=data[i*4+1]-target[1],b=data[i*4+2]-target[2]; if(r*r+g*g+b*b<=tol2)mask[i]=1; } const lbl=new Int32Array(N); const comps=[]; const stack=[]; for(let p=0;p<N;p++){ if(mask[p]&&!lbl[p]){ const px=[]; stack.length=0; stack.push(p); lbl[p]=1; while(stack.length){ const q=stack.pop(); px.push(q); const qx=q%W,qy=(q/W)|0; for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){ if(!dx&&!dy)continue; const nx=qx+dx,ny=qy+dy; if(nx<0||ny<0||nx>=W||ny>=H)continue; const np=ny*W+nx; if(mask[np]&&!lbl[np]){lbl[np]=1;stack.push(np);} } } comps.push(px); } } const minPix=Math.max(25,N*0.0001); comps.sort((a,b)=>b.length-a.length); const routes=[]; comps.forEach(px=>{ if(px.length<minPix)return; if(routes.length>=60)return; const poly=centerline(px,W); if(poly&&poly.length>=2) routes.push(poly.map(p=>({x:p.x/scale,y:p.y/scale}))); }); return {routes,oc,scale}; }
+
+  function loadTesseract(){ return new Promise(res=>{ if(typeof Tesseract!=='undefined')return res(); const s=document.createElement('script'); s.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'; s.onload=()=>res(); s.onerror=()=>res(); document.head.appendChild(s); }); }
+  function parseChainage(t){ t=String(t).replace(/[,\s]/g,''); let m=t.match(/(\d+)\+(\d{2,3})/); if(m)return parseInt(m[1],10)*1000+parseInt(m[2],10); m=t.match(/^(?:CH|KP|STA|CHAINAGE)?:?(\d{1,5}(?:\.\d+)?)$/i); if(m){ const n=parseFloat(m[1]); if(n>=0&&n<100000)return n; } return null; }
+  async function ocrChainages(canvas){ await loadTesseract(); if(typeof Tesseract==='undefined'||!canvas)return []; const res=await Tesseract.recognize(canvas,'eng'); const words=(res&&res.data&&res.data.words)||[]; const out=[]; words.forEach(w=>{ const v=parseChainage(w.text); if(v!=null&&w.bbox){ out.push({v,x:(w.bbox.x0+w.bbox.x1)/2,y:(w.bbox.y0+w.bbox.y1)/2}); } }); return out; }
+  function nearestLabel(labels,p){ let best=null,bd=Infinity; labels.forEach(l=>{ const d=Math.hypot(l.x-p.x,l.y-p.y); if(d<bd){bd=d;best=l;} }); const lim=img?Math.max(img.width,img.height)*0.12:1e9; return (best&&bd<=lim)?best:null; }
+  function assignChainage(routes,labels){ return routes.map(poly=>{ const a=poly[0],b=poly[poly.length-1]; const la=nearestLabel(labels,a),lb=nearestLabel(labels,b); let s=la?la.v:null,e=lb?lb.v:null; const L=Math.round(polyLen(poly)); if(s!=null&&e!=null){ if(s>e){const t=s;s=e;e=t;} if(e<=s)e=s+L; return {start:s,end:e}; } if(s!=null)return {start:s,end:s+L}; if(e!=null)return {start:Math.max(0,e-L),end:e}; return {start:0,end:L}; }); }
+
+  async function runDetect(){ if(!pickedColor){ $('dtErr').textContent='Pick the line colour first.'; return; } const tol=parseInt($('dtTol').value,10)||60, doOcr=$('dtOcr').checked; $('detectModal').classList.add('hidden'); showSpin(true,'Detecting lines…'); await new Promise(r=>setTimeout(r,30)); let result; try{ result=detectRoutes(pickedColor,tol); }catch(e){ console.warn(e); showSpin(false); flashBar('Detection failed on this image'); $('detectModal').classList.remove('hidden'); return; } if(!result.routes.length){ showSpin(false); $('dtErr').textContent='No lines found in that colour — try a higher tolerance.'; $('detectModal').classList.remove('hidden'); return; } let labels=[]; if(doOcr){ showSpin(true,'Reading chainages (first run downloads the OCR engine)…'); try{ labels=await ocrChainages(ensureSrc()); }catch(e){ console.warn(e); } } const chain=assignChainage(result.routes,labels); const svcN=svcOf(active)?svcOf(active).name:'Route'; detected=result.routes.map((poly,i)=>({points:poly,name:svcN+' '+(routes.length+i+1),start:chain[i].start,end:chain[i].end,include:true})); previewDetected=true; showSpin(false); render(); openReview(labels.length); }
+
+  function openReview(nLabels){ const wrap=$('rvList'); wrap.innerHTML=''; $('rvErr').textContent=''; detected.forEach(d=>{ const row=document.createElement('div'); row.className='rvrow'; const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=d.include!==false; cb.onchange=()=>{ d.include=cb.checked; render(); }; const nm=document.createElement('input'); nm.type='text'; nm.className='rvname'; nm.value=d.name; nm.oninput=()=>{ d.name=nm.value; }; const st=document.createElement('input'); st.type='number'; st.className='rvch'; st.value=Math.round(d.start); st.oninput=()=>{ d.start=parseFloat(st.value); }; const en=document.createElement('input'); en.type='number'; en.className='rvch'; en.value=Math.round(d.end); en.oninput=()=>{ d.end=parseFloat(en.value); }; row.append(cb,nm,st,en); wrap.appendChild(row); }); $('rvMsg').textContent= detected.length+' line'+(detected.length>1?'s':'')+' detected · '+(nLabels? (nLabels+' chainage label'+(nLabels>1?'s':'')+' read — check them'):'chainages not read, enter below'); $('reviewModal').classList.remove('hidden'); }
+  function cancelReview(){ $('reviewModal').classList.add('hidden'); previewDetected=false; detected=null; render(); }
+  function commitDetected(){ let added=0; const base=Date.now(); detected.forEach(d=>{ if(d.include===false)return; let s=parseFloat(d.start)||0, e=parseFloat(d.end); if(!(e>s))e=s+Math.max(1,Math.round(polyLen(d.points))); routes.push({id:'r'+base+'_'+(added),name:(d.name||'Route').trim()||'Route',start:s,end:e,points:d.points,by:userName||null,createdAt:new Date().toISOString().slice(0,10),auto:true}); added++; }); if(!added){ $('rvErr').textContent='Tick at least one route to add.'; return; } $('reviewModal').classList.add('hidden'); previewDetected=false; detected=null; saveData(); refreshUI(); render(); flashBar(added+' route'+(added!==1?'s':'')+' added'); }
 
   // ---------- wire ----------
   $('btnLoad').onclick=$('btnLoad2').onclick=()=>$('fileInput').click();
@@ -780,6 +847,9 @@ const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
   $('whoLbl').onclick=async()=>{ const n=await uiPrompt('Your name','This name is attached to the progress updates you make.',userName); if(n!=null)setUserName(n); };
   $('qtyTarget').onchange=saveTarget; $('qtyUnit').onchange=saveTarget;
   $('btnServices').onclick=()=>{ if(editMode) openServicePicker(false); };
+  $('btnDetect').onclick=async()=>{ if(editMode&&img&&active!=='none'&&await requireName()) openDetect(); };
+  $('dtPick').onclick=startEyedrop; $('dtCancel').onclick=()=>$('detectModal').classList.add('hidden'); $('dtRun').onclick=runDetect; $('dtTol').oninput=()=>$('dtTolV').textContent=$('dtTol').value;
+  $('rvCancel').onclick=cancelReview; $('rvAdd').onclick=commitDetected;
   $('spCancel').onclick=()=>$('svcPicker').classList.add('hidden'); $('spSave').onclick=savePicker;
   $('spAll').onclick=()=>$('spList').querySelectorAll('input[type=checkbox]').forEach(c=>c.checked=true);
   $('spNone').onclick=()=>$('spList').querySelectorAll('input[type=checkbox]').forEach(c=>c.checked=false);

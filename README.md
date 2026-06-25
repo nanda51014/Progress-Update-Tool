@@ -10,6 +10,7 @@ Load your project layout image, pick a service (roadworks, pipe laying, ducts, c
 - Layered **Layout** selector — drill down by category (Earthworks, Wet Services, Dry Services, Road Works, Structures) → type (Pipe Laying, Chambers, Cable/Duct, Carriageway, Footpath…) → discipline (Storm Water, Sewer, CCTV, Street Lighting…)
 - **Per-project service scope** — when a project is created you tick which services it actually contains (road, storm water, sewer, bridge…); only those appear in the Layout selector. Change the scope anytime via **Services…**
 - Trace routes by clicking along the centreline, with chainage stationing
+- **Auto-detect routes** from a drawing where the network lines are a distinct colour: pick the colour, and the tool traces each line into a route automatically (with a best-effort OCR pass to pre-fill chainages and a review step to confirm)
 - Log progress per route, per side (LHS/RHS/Both for dual-carriageway services), per activity stage
 - Colour-coded progress overlay and per-stage / overall percentage summaries
 - **Installed quantity vs. target** per layer — set a target (e.g. 2,400 m of pipe, 35 manholes) and see how much is fully complete against it
