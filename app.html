@@ -1,0 +1,1058 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Infrastructure Progress Layout</title>
+  <style>
+    html,body{margin:0;padding:0;height:100%;background:#f4f5f7}
+  </style>
+</head>
+<body>
+<div id="app">
+  <div id="topbar">
+    <div class="brand">Infrastructure Progress Layout<div class="rev">Rev 04 · 02-Jul-26</div></div>
+    <div class="who" id="whoLbl"></div>
+    <div class="tools">
+      <button id="btnServices">⚙ Services…</button>
+      <div class="sep"></div>
+      <button id="btnMode">✎ Editing</button>
+      <div class="sep"></div>
+      <button id="btnLoad">Load drawing</button>
+      <div class="svcWrap">Layout
+        <select id="layer1"></select>
+        <select id="layer2" class="hidden"></select>
+        <select id="layer3" class="hidden"></select>
+      </div>
+      <div class="sep"></div>
+      <button id="btnRoute" disabled>+ Add route</button>
+      <button id="btnDetect" disabled>⤳ Auto-detect routes</button>
+      <button id="btnUpdate" disabled>Update progress</button>
+      <div class="sep"></div>
+      <button id="btnFit" disabled>Fit</button>
+      <button id="btnLabels" disabled>Labels: on</button>
+      <div class="sep"></div>
+      <button id="btnSync">Sync</button>
+      <button id="btnExport" disabled>Export PNG</button>
+      <button id="btnReport">Report (PDF)</button>
+      <button id="btnCsv">Export CSV</button>
+      <div class="grow"></div>
+      <button id="btnReset" class="danger">Reset</button>
+      <input type="file" id="fileInput" accept="image/*,application/pdf,.pdf" hidden>
+      <input type="file" id="detectInput" accept="image/*,application/pdf,.pdf" hidden>
+    </div>
+  </div>
+
+  <div id="body">
+    <div id="stage">
+      <canvas id="cv"></canvas>
+      <div id="empty">
+        <div class="ebox">
+          <div class="etitle">No drawing loaded</div>
+          <div class="esub">Load your project layout, pick a service, add a route by tracing it, then log progress by entering a from/to chainage and the completed activity. Each service keeps its own routes and progress on the same base drawing.</div>
+          <button id="btnLoad2">Load drawing</button>
+        </div>
+      </div>
+      <div id="bar" class="hidden"><span id="barMsg"></span><span id="barBtns"></span></div>
+      <div id="readout" class="hidden"></div>
+      <div id="spinner" class="hidden"><div class="dot"></div><span id="spinTxt">Loading…</span></div>
+    </div>
+
+    <div id="side">
+      <div class="card">
+        <div class="ctitle" id="overallTitle">Overall progress</div>
+        <div class="bigpct" id="overallPct">—</div>
+        <div class="barOuter"><div class="barInner" id="overallBar"></div></div>
+        <div class="muted" id="overallSub">No progress yet</div>
+        <div class="splitRow" id="splitRow"></div>
+      </div>
+      <div class="card" id="qtyCard">
+        <div class="ctitle">Installed quantity</div>
+        <div class="bigpct" id="qtyVal" style="font-size:24px">—</div>
+        <div class="barOuter"><div class="barInner" id="qtyBar"></div></div>
+        <div class="muted" id="qtySub"></div>
+        <div class="qtyset">
+          <label>Target<input id="qtyTarget" type="number" min="0" step="1" placeholder="—"></label>
+          <label>Unit<input id="qtyUnit" type="text" placeholder="m"></label>
+        </div>
+      </div>
+      <div class="card">
+        <div class="ctitle" id="legendTitle">Stage legend</div>
+        <div id="legend"></div>
+      </div>
+      <div class="card">
+        <div class="ctitle">Routes</div>
+        <div id="routeList"><div class="muted">No routes yet.</div></div>
+      </div>
+      <div class="card">
+        <div class="ctitle">Progress log</div>
+        <div id="logList"><div class="muted">No entries yet.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="routeModal" class="ov hidden">
+    <div class="mbox">
+      <div class="mtitle" id="routeTitle">New route</div>
+      <label>Route name<input id="rName" type="text" placeholder="e.g. Mainline / Line A / Trunk 1"></label>
+      <div class="row">
+        <label>Start chainage (m)<input id="rStart" type="number" value="0" step="1"></label>
+        <label>End chainage (m)<input id="rEnd" type="number" value="2000" step="1"></label>
+      </div>
+      <div class="merr" id="rErr"></div>
+      <div class="mbtns"><button id="rCancel" class="ghost">Cancel</button><button id="rStartTrace">Start tracing</button></div>
+    </div>
+  </div>
+
+  <div id="modal" class="ov hidden">
+    <div class="mbox">
+      <div class="mtitle" id="updTitle">Update progress</div>
+      <label>Route<select id="mRoute"></select></label>
+      <div class="muted" id="mRange" style="margin:-6px 0 10px;font-size:11.5px"></div>
+      <div id="sideWrap">
+        <div class="seglbl">Side</div>
+        <div class="seg" id="mSide"><button data-s="L">LHS</button><button data-s="R">RHS</button><button data-s="B" class="on">Both</button></div>
+      </div>
+      <div class="row">
+        <label>From chainage (m)<input id="mFrom" type="number" step="1"></label>
+        <label>To chainage (m)<input id="mTo" type="number" step="1"></label>
+      </div>
+      <label>Completed activity<select id="mStage"></select></label>
+      <label>WIR No. (required)<input id="mWir" type="text" placeholder="e.g. WIR-0451" maxlength="40" autocomplete="off"></label>
+      <div class="merr" id="mErr"></div>
+      <div class="mbtns"><button id="mPick" class="ghost">📍 Pick on drawing</button><span style="flex:1"></span><button id="mCancel" class="ghost">Cancel</button><button id="mSave">Save</button></div>
+    </div>
+  </div>
+
+  <div id="confirm" class="ov hidden">
+    <div class="mbox">
+      <div class="mtitle" id="cfTitle">Confirm</div>
+      <div class="muted" id="cfMsg" style="margin-bottom:16px;font-size:13px;line-height:1.5"></div>
+      <div class="mbtns"><button id="cfNo" class="ghost">Cancel</button><button id="cfYes" class="danger">Confirm</button></div>
+    </div>
+  </div>
+
+  <div id="detectModal" class="ov hidden">
+    <div class="mbox">
+      <div class="mtitle">Auto-detect routes</div>
+      <div class="muted" style="margin-bottom:10px;font-size:12.5px;line-height:1.45">Detecting coloured network lines for <b id="dtSvc"></b> on this layout's drawing. Works best when the lines are a distinct solid colour.</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:12px;color:#6b7280"><span id="dtDrawing" style="flex:1">Drawing loaded for this layout.</span><button id="dtChange" class="ghost" type="button">Change drawing</button></div>
+      <label>Line colour
+        <div style="display:flex;gap:8px;align-items:center;margin-top:5px">
+          <span id="dtSwatch" style="width:36px;height:26px;border-radius:6px;border:1px solid #d1d5db;background:transparent;font-size:10px;display:flex;align-items:center;justify-content:center;color:#9aa1ac">none</span>
+          <button id="dtPick" class="ghost" type="button">Pick colour on drawing</button>
+        </div>
+      </label>
+      <label>Colour tolerance: <span id="dtTolV">60</span><input id="dtTol" type="range" min="20" max="160" value="60"></label>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:4px"><input id="dtOcr" type="checkbox" checked style="width:auto;margin-top:0"> Try to read chainages from the drawing (slower, best-effort)</label>
+      <div class="merr" id="dtErr"></div>
+      <div class="mbtns"><button id="dtCancel" class="ghost">Cancel</button><button id="dtRun">Detect</button></div>
+    </div>
+  </div>
+
+  <div id="reviewModal" class="ov hidden">
+    <div class="mbox" style="width:490px">
+      <div class="mtitle">Review detected routes</div>
+      <div class="muted" id="rvMsg" style="margin-bottom:6px;font-size:12.5px"></div>
+      <div class="rvhead"><span></span><span>Name</span><span>Start</span><span>End</span></div>
+      <div id="rvList" style="max-height:46vh;overflow-y:auto"></div>
+      <div class="merr" id="rvErr"></div>
+      <div class="mbtns"><button id="rvMin" class="ghost">▾ Minimize to review</button><span style="flex:1"></span><button id="rvCancel" class="ghost">Cancel</button><button id="rvAdd">Add routes</button></div>
+    </div>
+  </div>
+
+  <div id="svcPicker" class="ov hidden">
+    <div class="mbox" style="width:460px">
+      <div class="mtitle" id="spTitle">Select services in this project</div>
+      <div class="muted" style="margin-bottom:8px;font-size:12.5px;line-height:1.45">Tick the services included in this project. Only ticked services appear in the Layout selector — you can change this anytime via “Services…”.</div>
+      <div id="spList" style="max-height:52vh;overflow-y:auto;margin:4px 0 6px;padding-right:4px"></div>
+      <div class="merr" id="spErr"></div>
+      <div class="mbtns"><button id="spAll" class="ghost">Select all</button><button id="spNone" class="ghost">Clear</button><span style="flex:1"></span><button id="spCancel" class="ghost">Cancel</button><button id="spSave">Save</button></div>
+    </div>
+  </div>
+
+  <div id="prompt" class="ov hidden">
+    <div class="mbox">
+      <div class="mtitle" id="pmTitle">Your name</div>
+      <div class="muted" id="pmMsg" style="margin-bottom:10px;font-size:12.5px;line-height:1.45"></div>
+      <input id="pmInput" type="text" autocomplete="name">
+      <div class="merr" id="pmErr"></div>
+      <div class="mbtns"><button id="pmCancel" class="ghost">Cancel</button><button id="pmOk">Save</button></div>
+    </div>
+  </div>
+</div>
+
+<style>
+  *{box-sizing:border-box}
+  #app{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#1f2937;height:100vh;min-height:560px;display:flex;flex-direction:row;background:#f4f5f7}
+  #topbar{width:212px;flex:none;display:flex;flex-direction:column;padding:14px 12px;background:#ffffff;border-right:1px solid #e5e7eb;overflow-y:auto}
+  .brand{font-weight:700;font-size:15px;color:#111827;line-height:1.3;margin-bottom:14px}
+  .rev{font-weight:500;font-size:10px;color:#9aa1ac;margin-top:2px;letter-spacing:.3px}
+  .tools{display:flex;flex-direction:column;gap:8px;flex:1}
+  .tools .grow{flex:1;min-height:8px}
+  .tools .sep{height:1px;background:#eceef1;margin:4px 0}
+  .who{font-size:11.5px;color:#6b7280;margin-bottom:12px;cursor:pointer;word-break:break-word}
+  .who:hover{color:#374151}
+  #btnMode{border-color:#bbf7d0;color:#15803d;background:#f0fdf4;font-weight:600}
+  #btnMode.modeView{border-color:#fde68a;color:#92400e;background:#fffbeb}
+  .qtyset{display:flex;gap:8px;margin-top:12px}
+  .qtyset label{flex:1;display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:#6b7280}
+  .qtyset input{width:100%;margin-top:4px;background:#ffffff;border:1px solid #d1d5db;border-radius:7px;color:#1f2937;padding:6px 8px;font:inherit;font-size:13px}
+  .qtyset input:disabled{background:#f3f4f6;color:#9aa1ac}
+  #pmInput{display:block;width:100%;background:#ffffff;border:1px solid #d1d5db;border-radius:8px;color:#1f2937;padding:8px 10px;font:inherit;font-size:13px}
+  .spcat{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:#6b7280;font-weight:600;margin:12px 0 2px;padding-bottom:3px;border-bottom:1px solid #eceef1}
+  .spcat:first-child{margin-top:2px}
+  .sprow{display:flex;align-items:center;gap:10px;padding:6px 6px;font-size:13px;cursor:pointer;border-radius:7px}
+  .sprow:hover{background:#f3f4f6}
+  .sprow input{width:16px;height:16px;cursor:pointer;flex:none}
+  .rvhead{display:flex;gap:8px;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:#6b7280;padding:0 2px 4px;margin-top:4px}
+  .rvhead span:nth-child(1){width:16px;flex:none}.rvhead span:nth-child(2){flex:1}.rvhead span:nth-child(3),.rvhead span:nth-child(4){width:76px;flex:none}
+  .rvrow{display:flex;align-items:center;gap:8px;padding:4px 2px}
+  .rvrow input[type=checkbox]{width:16px;height:16px;flex:none}
+  .rvname{flex:1;min-width:0}
+  .rvch{width:76px;flex:none}
+  .rvrow input[type=text],.rvrow input[type=number]{background:#fff;border:1px solid #d1d5db;border-radius:7px;color:#1f2937;padding:6px 8px;font:inherit;font-size:12.5px}
+  #dtTol{width:100%;margin-top:5px}
+  button{font:inherit;font-size:13px;padding:8px 12px;border-radius:8px;border:1px solid #d1d5db;background:#ffffff;color:#374151;cursor:pointer;transition:.12s;text-align:left}
+  button:hover:not(:disabled){background:#f3f4f6;border-color:#c2c8d0}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  button.danger{border-color:#f0c2c2;color:#b91c1c;background:#ffffff}
+  button.danger:hover:not(:disabled){background:#fef2f2}
+  button.ghost{background:transparent}
+  #btnUpdate{border-color:#bfdbfe;color:#1d4ed8;background:#eff6ff}
+  #btnUpdate:hover:not(:disabled){background:#dbeafe}
+  #btnSync{border-color:#bbf7d0;color:#15803d;background:#f0fdf4}
+  #btnSync:hover:not(:disabled){background:#dcfce7}
+  .svcWrap{display:flex;flex-direction:column;align-items:flex-start;gap:5px;font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:#6b7280;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px}
+  .svcWrap select{width:100%;background:#ffffff;border:1px solid #d1d5db;color:#1f2937;border-radius:6px;padding:6px 8px;font:inherit;font-size:13px;text-transform:none;letter-spacing:0}
+  #body{flex:1;display:flex;min-height:0}
+  #stage{position:relative;flex:1;min-width:0;background:#eaecef;overflow:hidden}
+  #cv{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+  #cv.picking{cursor:crosshair}
+  #empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px}
+  .ebox{max-width:440px;text-align:center;background:#ffffff;border:1px dashed #cbd2db;border-radius:14px;padding:28px}
+  .etitle{font-size:16px;font-weight:600;margin-bottom:8px;color:#111827}
+  .esub{font-size:13px;color:#6b7280;line-height:1.5;margin-bottom:18px}
+  .ebox button{text-align:center}
+  #bar{position:absolute;top:12px;left:50%;transform:translateX(-50%);background:#ffffff;border:1px solid #d8dce2;border-radius:10px;padding:8px 10px;display:flex;gap:10px;align-items:center;box-shadow:0 8px 30px rgba(0,0,0,.12);flex-wrap:wrap;max-width:94%}
+  #barMsg{font-size:12.5px;color:#374151}
+  #barBtns{display:flex;gap:8px}
+  #readout{position:absolute;background:#1d4ed8;border:1px solid #1e40af;color:#ffffff;font-size:12px;font-weight:600;padding:3px 8px;border-radius:6px;pointer-events:none;transform:translate(-50%,-150%)}
+  #spinner{position:absolute;top:12px;left:12px;background:#ffffff;border:1px solid #d8dce2;border-radius:8px;padding:6px 10px;font-size:12px;display:flex;align-items:center;gap:8px;box-shadow:0 4px 14px rgba(0,0,0,.08)}
+  .dot{width:9px;height:9px;border-radius:50%;background:#2563eb;animation:pulse 1s infinite}
+  @keyframes pulse{0%,100%{opacity:.3}50%{opacity:1}}
+  #side{width:300px;flex:none;background:#ffffff;border-left:1px solid #e5e7eb;overflow-y:auto;padding:12px}
+  .card{background:#ffffff;border:1px solid #e8eaee;border-radius:12px;padding:14px;margin-bottom:12px}
+  .ctitle{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:#6b7280;margin-bottom:10px;font-weight:600}
+  .bigpct{font-size:34px;font-weight:700;color:#111827;line-height:1}
+  .barOuter{height:9px;border-radius:6px;background:#eceef1;margin:10px 0 8px;overflow:hidden}
+  .barInner{height:100%;width:0;background:linear-gradient(90deg,#eab308,#22c55e);transition:width .3s}
+  .muted{font-size:12px;color:#6b7280}
+  .splitRow{display:flex;gap:10px;margin-top:10px}
+  .splitRow .sb{flex:1;background:#f9fafb;border:1px solid #e8eaee;border-radius:8px;padding:7px 9px}
+  .splitRow .sb .k{font-size:10.5px;color:#6b7280;letter-spacing:.5px}
+  .splitRow .sb .v{font-size:16px;font-weight:650;color:#111827}
+  #legend .lrow{display:flex;align-items:center;gap:9px;padding:4px 0;font-size:12.5px}
+  .sw{width:16px;height:16px;border-radius:4px;flex:none;border:1px solid rgba(0,0,0,.12)}
+  .lcount{margin-left:auto;color:#6b7280;font-variant-numeric:tabular-nums}
+  .ritem{border:1px solid #e8eaee;border-radius:9px;padding:9px 10px;margin-bottom:8px}
+  .ritem .rn{font-size:13px;font-weight:600;color:#111827}
+  .ritem .rm{font-size:11.5px;color:#6b7280;margin-top:2px}
+  .ritem .rb{display:flex;gap:6px;margin-top:8px}
+  .ritem button{padding:4px 9px;font-size:11.5px;text-align:center}
+  .logItem{display:flex;align-items:flex-start;gap:8px;padding:7px 0;border-bottom:1px solid #eceef1;font-size:12px}
+  .logItem:last-child{border-bottom:none}
+  .logDot{width:11px;height:11px;border-radius:3px;flex:none;margin-top:2px}
+  .logTxt{flex:1;line-height:1.35}
+  .logTxt .lr{color:#1f2937;font-weight:600}
+  .logTxt .lm{color:#6b7280}
+  .logDel{cursor:pointer;color:#9aa1ac;padding:0 4px;font-size:15px;border:none;background:none}
+  .logDel:hover{color:#b91c1c}
+  .ov{position:absolute;inset:0;background:rgba(17,24,39,.35);display:flex;align-items:center;justify-content:center;z-index:30}
+  .mbox{width:360px;max-width:92%;background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;padding:18px;box-shadow:0 20px 50px rgba(0,0,0,.18)}
+  .mtitle{font-size:15px;font-weight:650;margin-bottom:14px;color:#111827}
+  .mbox label{display:block;font-size:11.5px;color:#6b7280;margin-bottom:12px}
+  .mbox input,.mbox select{display:block;width:100%;margin-top:5px;background:#ffffff;border:1px solid #d1d5db;border-radius:8px;color:#1f2937;padding:8px 10px;font:inherit;font-size:13px}
+  .mbox .row{display:flex;gap:10px}
+  .mbox .row label{flex:1}
+  .mbtns button{text-align:center}
+  .seglbl{font-size:11.5px;color:#6b7280;margin-bottom:5px}
+  .seg{display:flex;gap:6px;margin-bottom:12px}
+  .seg button{flex:1;text-align:center}
+  .seg button.on{background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8}
+  .merr{color:#b91c1c;font-size:12px;min-height:16px;margin-bottom:6px}
+  .mbtns{display:flex;justify-content:flex-end;gap:8px;align-items:center}
+  .hidden{display:none!important}
+  @media(max-width:760px){#app{flex-direction:column}#topbar{width:auto;flex-direction:row;flex-wrap:wrap;align-items:center;border-right:none;border-bottom:1px solid #e5e7eb;overflow:visible}.brand{margin-bottom:0;margin-right:10px}.tools{flex-direction:row;flex-wrap:wrap;flex:0 1 auto;align-items:center}.tools .grow{display:none}.tools .sep{display:none}.tools button{width:auto;text-align:center}.svcWrap{flex-direction:row;align-items:center}.svcWrap select{width:auto}#body{flex-direction:column}#side{width:auto;border-left:none;border-top:1px solid #e5e7eb;max-height:46%}}
+</style>
+
+<!-- Firebase SDK (compat build) — provides the cloud backend for shared sync -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+<script>
+// ===========================================================================
+//  SHARED MULTI-USER SYNC CONFIG
+//  ---------------------------------------------------------------------------
+//  Paste your Firebase Realtime Database config below (Firebase console →
+//  Project settings → Your apps → Web app → SDK setup → Config). Setup steps
+//  are in the README. Until a real config is added, the tool falls back to
+//  per-browser localStorage (no sharing).
+//
+//  These values are PUBLIC by design — security is enforced by your database
+//  rules, not by hiding the config. See database.rules.json in this repo and
+//  the "Securing the shared board" section of the README BEFORE publishing
+//  this page: with open rules, anyone with the URL can read/write your data.
+// ===========================================================================
+const firebaseConfig = {
+  apiKey: "PASTE_YOUR_API_KEY",
+  authDomain: "PASTE_YOUR_PROJECT.firebaseapp.com",
+  databaseURL: "https://PASTE_YOUR_PROJECT-default-rtdb.firebaseio.com",
+  projectId: "PASTE_YOUR_PROJECT",
+  storageBucket: "PASTE_YOUR_PROJECT.firebasestorage.app",
+  messagingSenderId: "PASTE_SENDER_ID",
+  appId: "PASTE_APP_ID"
+};
+
+// Each "board" is an independent shared project. Everyone who opens the same
+// URL shares the same board. Use a URL hash to run separate boards from one
+// site, e.g.  index.html#siteA  /  index.html#siteB . Defaults to "default".
+const BOARD_ID = (location.hash.replace(/^#/, '').trim() || 'default')
+  .replace(/[.#$\[\]\/]/g, '_');
+
+// ---------------------------------------------------------------------------
+// Storage layer. The app calls window.storage.set/get/delete(key, value, shared)
+// where `shared === true` means the shared cloud board and `false` means the
+// local browser copy. We back "shared" with Firebase (live, multi-user) and
+// always keep a localStorage mirror as an offline fallback.
+// ---------------------------------------------------------------------------
+(function () {
+  const cloudCache = Object.create(null);  // safeKey -> latest value string
+  let db = null, fbReady = false;
+  const safeKey = k => String(k).replace(/[.#$\[\]\/:]/g, '_');
+  const path = k => 'boards/' + BOARD_ID + '/' + safeKey(k);
+
+  const configured = firebaseConfig.apiKey &&
+    !String(firebaseConfig.apiKey).startsWith('PASTE');
+
+  if (configured) {
+    try {
+      firebase.initializeApp(firebaseConfig);
+      db = firebase.database();
+      fbReady = true;
+      // Keep a live cache of the shared keys so the app's poll loop reads them
+      // without hitting the network, and changes from other users stream in.
+      ['rpt:data', 'rpt:image'].forEach(k => {
+        db.ref(path(k)).on('value', snap => {
+          const v = snap.val();
+          if (v != null) cloudCache[safeKey(k)] = v;
+        });
+      });
+    } catch (e) {
+      console.warn('Firebase init failed — falling back to local storage.', e);
+      fbReady = false;
+    }
+  } else {
+    console.info('No Firebase config set — using local storage only (no sharing).');
+  }
+
+  window.__INFRA_SYNC__ = { get cloud() { return fbReady; }, board: BOARD_ID };
+
+  window.storage = {
+    async set(key, value, shared) {
+      try { localStorage.setItem(key, value); } catch (e) {}
+      if (fbReady && shared !== false) {
+        try {
+          await db.ref(path(key)).set(value);
+          cloudCache[safeKey(key)] = value;
+        } catch (e) { console.warn('cloud set failed', e); }
+      }
+      return { value };
+    },
+    async get(key, shared) {
+      if (fbReady && shared !== false) {
+        const sk = safeKey(key);
+        if (cloudCache[sk] != null) return { value: cloudCache[sk] };
+        try {
+          const snap = await db.ref(path(key)).once('value');
+          const v = snap.val();
+          if (v != null) { cloudCache[sk] = v; return { value: v }; }
+        } catch (e) {}
+        return null;
+      }
+      try {
+        const v = localStorage.getItem(key);
+        return v == null ? null : { value: v };
+      } catch (e) { return null; }
+    },
+    async delete(key, shared) {
+      try { localStorage.removeItem(key); } catch (e) {}
+      if (fbReady && shared !== false) {
+        try { await db.ref(path(key)).remove(); delete cloudCache[safeKey(key)]; }
+        catch (e) {}
+      }
+      return true;
+    }
+  };
+})();
+</script>
+
+<script>
+(function(){
+  const IMG_KEY='rpt:image', DATA_KEY='rpt:data';
+  const T_EARTH=["Not started","Cutting/Filling"];
+  const T_ROAD=["Not started","Earthworks","Formation / Subgrade","Subbase","Road Base","Asphalt Base (Binder)","Wearing Course","Complete"];
+  const T_PIPE=["Not started","Excavation","Bedding","Pipe Laying","Surround","Backfilling","Testing","Complete"];
+  const T_DUCT=["Not started","Excavation","Bedding","Duct Laying","Encasement","Backfilling","Testing","Complete"];
+  const T_CHMB=["Not started","Excavation","Base / Blinding","Chamber Construction","Backfilling","Cover & Frame","Testing","Complete"];
+  const T_KERB=["Not started","Excavation","Concrete Bed","Kerb Laying","Haunching & Backfill","Complete"];
+  const T_LFND=["Not started","Excavation","Foundation / Base","Pole Erection","Backfilling","Complete"];
+  const T_LAND=["Not started","Fine Grading","Topsoil","Planting","Irrigation Connection","Complete"];
+  const T_STRC=["Not started","Excavation","Foundation","Substructure","Superstructure","Backfilling","Complete"];
+  const T_BRIDGE=["Not started","Piling / Foundations","Pile Caps","Piers & Abutments","Bearings","Beams / Girders","Deck Slab","Parapet & Surfacing","Complete"];
+  const T_UNDERPASS=["Not started","Excavation","Base Slab","Walls","Roof Slab","Waterproofing","Backfilling","Approach & Surfacing","Complete"];
+  const T_FOOT=["Not started","Subgrade Preparation","Subbase","Base Course","Surfacing / Paving","Complete"];
+  const SERVICES=[
+    {key:'earthworks',name:'Earthworks',group:'Earthworks',stages:T_EARTH},
+    {key:'roadworks',name:'Road Works - Carriageway',group:'Roads',stages:T_ROAD,dual:true},
+    {key:'footpath',name:'Road Works - Footpath',group:'Roads',stages:T_FOOT},
+    {key:'kerbs',name:'Kerbs & Channels',group:'Roads',stages:T_KERB},
+    {key:'stormwater_pipe',name:'Storm Water - Pipe Laying',group:'Storm Water',stages:T_PIPE},
+    {key:'stormwater_mh',name:'Storm Water - Manholes',group:'Storm Water',stages:T_CHMB},
+    {key:'sewer_pipe',name:'Foul Sewer - Pipe Laying',group:'Foul Sewer',stages:T_PIPE},
+    {key:'sewer_mh',name:'Foul Sewer - Manholes',group:'Foul Sewer',stages:T_CHMB},
+    {key:'irrigation_pipe',name:'Irrigation - Pipe Laying',group:'Irrigation',stages:T_PIPE},
+    {key:'irrigation_ch',name:'Irrigation - Chambers',group:'Irrigation',stages:T_CHMB},
+    {key:'potable_pipe',name:'Potable Water - Pipe Laying',group:'Potable Water',stages:T_PIPE},
+    {key:'potable_ch',name:'Potable Water - Chambers',group:'Potable Water',stages:T_CHMB},
+    {key:'tse_pipe',name:'TSE (Recycled) - Pipe Laying',group:'TSE / Recycled',stages:T_PIPE},
+    {key:'tse_ch',name:'TSE (Recycled) - Chambers',group:'TSE / Recycled',stages:T_CHMB},
+    {key:'fire_pipe',name:'Firefighting - Pipe Laying',group:'Firefighting',stages:T_PIPE},
+    {key:'fire_ch',name:'Firefighting - Chambers',group:'Firefighting',stages:T_CHMB},
+    {key:'gas_pipe',name:'Gas - Pipe Laying',group:'Gas',stages:T_PIPE},
+    {key:'gas_ch',name:'Gas - Chambers',group:'Gas',stages:T_CHMB},
+    {key:'telecom_duct',name:'Telecom - Duct Laying',group:'Telecom',stages:T_DUCT},
+    {key:'telecom_ch',name:'Telecom - Chambers',group:'Telecom',stages:T_CHMB},
+    {key:'power_duct',name:'Power - Duct Laying',group:'Electrical Power',stages:T_DUCT},
+    {key:'power_ch',name:'Power - Chambers',group:'Electrical Power',stages:T_CHMB},
+    {key:'lighting_duct',name:'Street Lighting - Cabling / Ducts',group:'Street Lighting',stages:T_DUCT},
+    {key:'lighting_fnd',name:'Street Lighting - Foundations',group:'Street Lighting',stages:T_LFND},
+    {key:'security_duct',name:'Security Network - Duct Laying',group:'Security Network',stages:T_DUCT},
+    {key:'security_ch',name:'Security Network - Chambers',group:'Security Network',stages:T_CHMB},
+    {key:'landscaping',name:'Landscaping / Softscape',group:'Landscaping',stages:T_LAND},
+    {key:'structures',name:'Structures / Culverts',group:'Structures',stages:T_STRC},
+    {key:'bridges',name:'Structures - Bridges',group:'Structures',stages:T_BRIDGE},
+    {key:'underpass',name:'Structures - Underpass',group:'Structures',stages:T_UNDERPASS}
+  ];
+  function ramp(n){ const out=['#4b5563']; const stops=[[180,83,9],[217,119,6],[234,179,8],[163,230,53],[34,197,94],[22,163,74]]; const m=n-1; for(let i=1;i<n;i++){ const t=(m<=1)?0:(i-1)/(m-1); const pos=t*(stops.length-1); const a=Math.floor(pos),b=Math.min(stops.length-1,a+1),f=pos-a; const c=[0,1,2].map(j=>Math.round(stops[a][j]+(stops[b][j]-stops[a][j])*f)); out.push('rgb('+c[0]+','+c[1]+','+c[2]+')'); } return out; }
+  SERVICES.forEach(s=>s.colors=ramp(s.stages.length));
+  const svcOf=k=>SERVICES.find(s=>s.key===k);
+  const isDual=()=>{ const s=svcOf(active); return !!(s&&s.dual); };
+  // Three-layer Layout hierarchy. Leaves carry a `service` key (into SERVICES);
+  // branch nodes carry `children`. Layer 2/3 selects appear only when the chosen
+  // branch has deeper levels.
+  const LAYOUT=[
+    {label:'Earthworks',service:'earthworks'},
+    {label:'Wet Services',children:[
+      {label:'Storm Water',children:[
+        {label:'Pipe Laying',service:'stormwater_pipe'},
+        {label:'Chambers / Manholes',service:'stormwater_mh'}
+      ]},
+      {label:'Foul Sewer',children:[
+        {label:'Pipe Laying',service:'sewer_pipe'},
+        {label:'Chambers / Manholes',service:'sewer_mh'}
+      ]},
+      {label:'Potable Water',children:[
+        {label:'Pipe Laying',service:'potable_pipe'},
+        {label:'Chambers',service:'potable_ch'}
+      ]},
+      {label:'Irrigation',children:[
+        {label:'Pipe Laying',service:'irrigation_pipe'},
+        {label:'Chambers',service:'irrigation_ch'}
+      ]},
+      {label:'TSE / Recycled',children:[
+        {label:'Pipe Laying',service:'tse_pipe'},
+        {label:'Chambers',service:'tse_ch'}
+      ]},
+      {label:'Firefighting',children:[
+        {label:'Pipe Laying',service:'fire_pipe'},
+        {label:'Chambers',service:'fire_ch'}
+      ]},
+      {label:'Gas',children:[
+        {label:'Pipe Laying',service:'gas_pipe'},
+        {label:'Chambers',service:'gas_ch'}
+      ]}
+    ]},
+    {label:'Dry Services',children:[
+      {label:'Telecom',children:[
+        {label:'Cable / Duct Laying',service:'telecom_duct'},
+        {label:'Chambers',service:'telecom_ch'}
+      ]},
+      {label:'Electrical Power',children:[
+        {label:'Cable / Duct Laying',service:'power_duct'},
+        {label:'Chambers',service:'power_ch'}
+      ]},
+      {label:'Street Lighting',children:[
+        {label:'Cable / Duct Laying',service:'lighting_duct'},
+        {label:'Foundations',service:'lighting_fnd'}
+      ]},
+      {label:'CCTV / Security',children:[
+        {label:'Cable / Duct Laying',service:'security_duct'},
+        {label:'Chambers',service:'security_ch'}
+      ]}
+    ]},
+    {label:'Road Works',children:[
+      {label:'Carriageway',service:'roadworks'},
+      {label:'Footpath',service:'footpath'},
+      {label:'Kerbs & Channels',service:'kerbs'}
+    ]},
+    {label:'Structures',children:[
+      {label:'Bridges',service:'bridges'},
+      {label:'Underpass',service:'underpass'}
+    ]}
+  ];
+  function layoutPathOf(key){ for(let i=0;i<LAYOUT.length;i++){ const a=LAYOUT[i]; if(a.service===key)return[i]; if(a.children)for(let j=0;j<a.children.length;j++){ const b=a.children[j]; if(b.service===key)return[i,j]; if(b.children)for(let k=0;k<b.children.length;k++){ if(b.children[k].service===key)return[i,j,k]; } } } return null; }
+  // ----- project scope (which services are enabled for this project) -----
+  const inScope=k=> scope===null || scope.indexOf(k)>=0;
+  function nodeEnabled(n){ return n.service? inScope(n.service) : (n.children? n.children.some(nodeEnabled) : false); }
+  function firstScopedKey(){ for(const c of LAYOUT){ if(c.service){ if(inScope(c.service))return c.service; } else for(const b of c.children){ if(b.service){ if(inScope(b.service))return b.service; } else for(const l of b.children){ if(inScope(l.service))return l.service; } } } return 'none'; }
+  function firstEnabledIdx(arr){ for(let i=0;i<arr.length;i++) if(nodeEnabled(arr[i])) return String(i); return '0'; }
+  // flatten LAYOUT into tickable units (one per discipline / road element / standalone)
+  function scopeUnits(){ const units=[]; LAYOUT.forEach(cat=>{ if(cat.service){ units.push({cat:cat.label,label:cat.label,keys:[cat.service]}); } else cat.children.forEach(ch=>{ if(ch.service){ units.push({cat:cat.label,label:ch.label,keys:[ch.service]}); } else { units.push({cat:cat.label,label:ch.label,keys:ch.children.map(l=>l.service)}); } }); }); return units; }
+  function firstLeaf(node){ let n=node; while(n.children&&n.children.length){ n=n.children.find(nodeEnabled)||n.children[0]; } return n.service; }
+  function lopt(val,label){ const o=document.createElement('option'); o.value=val; o.textContent=label; return o; }
+  function renderLayoutSelectors(){
+    const path= active==='none'? [] : (layoutPathOf(active)||[]);
+    const s1=$('layer1'); s1.innerHTML=''; s1.appendChild(lopt('none','None (base layout)')); LAYOUT.forEach((n,i)=>{ if(nodeEnabled(n)) s1.appendChild(lopt(String(i),n.label)); }); s1.value= path.length? String(path[0]):'none';
+    const l1= path.length? LAYOUT[path[0]] : null;
+    const s2=$('layer2');
+    if(l1&&l1.children){ s2.classList.remove('hidden'); s2.innerHTML=''; l1.children.forEach((n,j)=>{ if(nodeEnabled(n)) s2.appendChild(lopt(String(j),n.label)); }); s2.value= path.length>=2?String(path[1]):firstEnabledIdx(l1.children); }
+    else { s2.classList.add('hidden'); s2.innerHTML=''; }
+    const l2= (l1&&l1.children&&path.length>=2)? l1.children[path[1]] : null;
+    const s3=$('layer3');
+    if(l2&&l2.children){ s3.classList.remove('hidden'); s3.innerHTML=''; l2.children.forEach((n,k)=>{ if(nodeEnabled(n)) s3.appendChild(lopt(String(k),n.label)); }); s3.value= path.length>=3?String(path[2]):firstEnabledIdx(l2.children); }
+    else { s3.classList.add('hidden'); s3.innerHTML=''; }
+  }
+  function onLayer1(){ const v=$('layer1').value; if(v==='none'){ switchService('none'); return; } const node=LAYOUT[+v]; switchService(node.children?firstLeaf(node):node.service); }
+  function onLayer2(){ const node=LAYOUT[+$('layer1').value].children[+$('layer2').value]; switchService(node.children?firstLeaf(node):node.service); }
+  function onLayer3(){ const node=LAYOUT[+$('layer1').value].children[+$('layer2').value].children[+$('layer3').value]; switchService(node.service); }
+
+  function emptyServices(){ const o={}; SERVICES.forEach(s=>o[s.key]={routes:[],entries:[],target:null,hasImage:false}); return o; }
+  function commitActive(){ if(active&&active!=='none'&&services[active]){ services[active].routes=routes; services[active].entries=entries; } }
+  let services=emptyServices();
+  let scope=null;   // array of enabled service keys for this project; null = all (legacy)
+  let active='roadworks';
+  let routes=[], entries=[];
+  let curStages=[], curColors=[], curMax=1;
+  let showLabels=true;
+  let userName=(()=>{try{return (localStorage.getItem('rpt:user')||'').trim();}catch(e){return '';}})();
+  let editMode=(()=>{try{return localStorage.getItem('rpt:editmode')!=='0';}catch(e){return true;}})();
+  const isCountSvc=k=>/_(mh|ch|fnd)$/.test(k);
+  let img=null, imgUrl=null;
+  let baseImg=null, baseUrl=null; const svcImgCache={}; let _shownImg=null, pendingOpenDetect=false;
+  let scale=1, offX=0, offY=0;
+  let mode='idle', trace=null, pick=null, curSide='B', eseq=1, lastDataStr=null;
+  let pickedColor=null, detected=null, previewDetected=false, srcCanvas=null, srcCtx=null;
+
+  const $=id=>document.getElementById(id);
+  const cv=$('cv'), ctx=cv.getContext('2d');
+  let dpr=window.devicePixelRatio||1, cw=0, ch=0;
+
+  function setStageContext(){ const s=svcOf(active); if(s){ curStages=s.stages; curColors=s.colors; curMax=s.stages.length-1; } else { curStages=[]; curColors=[]; curMax=1; } }
+  function loadActiveRefs(){ if(active==='none'){ routes=[]; entries=[]; } else { if(!services[active])services[active]={routes:[],entries:[]}; routes=services[active].routes; entries=services[active].entries; } setStageContext(); }
+
+  // ---------- storage ----------
+  async function probeShared(){ try{ await window.storage.set('rpt:probe',String(Date.now()),true); const r=await window.storage.get('rpt:probe',true); return !!(r&&r.value); }catch(e){ return false; } }
+  async function getMig(k){ try{ const s=await window.storage.get(k,true); if(s&&s.value)return {value:s.value,promote:false}; }catch(e){} try{ const p=await window.storage.get(k,false); if(p&&p.value)return {value:p.value,promote:true}; }catch(e){} return null; }
+  function legacyEntries(o){ const out=[]; const map={}; if(o.stages) o.stages.forEach(x=>map[x.id]={sL:x.sL||0,dL:x.dL,sR:x.sR||0,dR:x.dR}); else if(o.segments) o.segments.forEach(x=>map[x.id]={sL:x.stage||0,dL:x.date,both:true}); (o.routes||[]).forEach(r=>{ const iv=r.interval||200,span=r.end-r.start,n=Math.max(1,Math.ceil(span/iv)); for(let k=0;k<n;k++){ const m=map[r.id+':'+k]; if(!m)continue; const from=r.start+k*iv,to=Math.min(r.start+(k+1)*iv,r.end); if(m.both){ if(m.sL>0)out.push(mkEntry('B',from,to,m.sL,m.dL,r.id)); } else { if(m.sL>0)out.push(mkEntry('L',from,to,m.sL,m.dL,r.id)); if(m.sR>0)out.push(mkEntry('R',from,to,m.sR,m.dR,r.id)); } } }); return out; }
+  function applyData(o,keepActive){
+    showLabels= typeof o.showLabels==='boolean'?o.showLabels:showLabels;
+    scope= Array.isArray(o.scope)? o.scope.slice() : null;
+    services=emptyServices();
+    if(o.services){ Object.keys(o.services).forEach(k=>{ if(services[k])services[k]={routes:o.services[k].routes||[],entries:o.services[k].entries||[],target:o.services[k].target||null,hasImage:!!o.services[k].hasImage}; }); }
+    else { services['roadworks']={routes:o.routes||[], entries:(o.entries||legacyEntries(o))}; }
+    let mx=0; Object.values(services).forEach(s=>s.entries.forEach(e=>{ const n=parseInt(String(e.id).slice(1))||0; if(n>mx)mx=n; })); eseq=mx+1;
+    const want = keepActive? active : ((o.active && (o.active==='none'||services[o.active]))?o.active:'roadworks');
+    active=want;
+    if(active!=='none' && scope!==null && !inScope(active)) active=firstScopedKey();
+    loadActiveRefs();
+  }
+  async function loadAll(){
+    showSpin(true,'Loading…'); let promote=false, hadData=false;
+    try{ const im=await getMig(IMG_KEY); if(im){ await setBaseImage(im.value, im.promote); } }catch(e){}
+    try{ const d=await getMig(DATA_KEY); if(d){ hadData=true; applyData(JSON.parse(d.value)); if(d.promote)promote=true; } }catch(e){}
+    applyDisplayed();
+    if(active!=='none'&&services[active]&&services[active].hasImage) await loadServiceImage(active);
+    showSpin(false); refreshUI(); fit(); render();
+    if(promote){ await saveData(); }
+    const ok=await probeShared(); if(!ok){ const w=document.querySelector('.esub'); if(w)w.textContent='Saving is disabled in this browser — local storage is unavailable. Your routes and progress will not persist after you close the tab.'; showBar('Storage unavailable — changes will NOT be saved in this browser.',[['OK',hideBar,true]]); }
+    if(!hadData && scope===null && editMode){ openServicePicker(true); }
+  }
+  async function syncNow(){ showSpin(true,'Syncing…'); const ok=await probeShared(); if(!ok){ showSpin(false); flashBar('Local storage is unavailable in this browser'); return; } let got=false; try{ const d=await window.storage.get(DATA_KEY,true); if(d&&d.value){ lastDataStr=d.value; applyData(JSON.parse(d.value),true); got=true; } }catch(e){} try{ const im=await window.storage.get(IMG_KEY,true); if(im&&im.value&&im.value!==baseUrl) await setBaseImage(im.value,false); }catch(e){} delete svcImgCache[active]; await loadServiceImage(active); applyDisplayed(); showSpin(false); refreshUI(); fit(); render(); flashBar(got?('Loaded · '+routes.length+' routes · '+entries.length+' entries on '+(svcOf(active)?svcOf(active).name:'—')):'No saved data found'); }
+  async function saveData(){ commitActive(); const s=JSON.stringify({active,showLabels,services,scope}); lastDataStr=s; try{ await window.storage.set(DATA_KEY,s,true);}catch(e){} try{ await window.storage.set(DATA_KEY,s,false);}catch(e){} }
+  function mkEntry(side,from,to,stage,date,routeId,by,wir){ const s=eseq++; return {id:'e'+s,seq:s,routeId,side,from,to,stage,date:date||null,by:by||null,wir:wir||null}; }
+
+  // ---------- image ----------
+  const readFile=f=>new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=()=>rej(r.error); r.readAsDataURL(f); });
+  const isPdf=f=>f&&(f.type==='application/pdf'||/\.pdf$/i.test(f.name||''));
+  function loadPdfJs(){ return new Promise(res=>{ if(typeof pdfjsLib!=='undefined')return res(); const s=document.createElement('script'); s.src='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js'; s.onload=()=>{ try{ pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js'; }catch(e){} res(); }; s.onerror=()=>res(); document.head.appendChild(s); }); }
+  async function pdfToDataUrl(file){ await loadPdfJs(); if(typeof pdfjsLib==='undefined')throw new Error('PDF engine unavailable'); const buf=await file.arrayBuffer(); const pdf=await pdfjsLib.getDocument({data:buf}).promise; const page=await pdf.getPage(1); let vp=page.getViewport({scale:1}); const scale=Math.min(3, 2200/Math.max(vp.width,vp.height)); vp=page.getViewport({scale}); const c=document.createElement('canvas'); c.width=Math.round(vp.width); c.height=Math.round(vp.height); const cx=c.getContext('2d'); cx.fillStyle='#fff'; cx.fillRect(0,0,c.width,c.height); await page.render({canvasContext:cx,viewport:vp}).promise; return c.toDataURL('image/png'); }
+  async function fileToImageUrl(file){ return isPdf(file)? await pdfToDataUrl(file) : await readFile(file); }
+  function downscale(url,maxDim,fmt){ return new Promise(res=>{ const i=new Image(); i.onload=()=>{ let w=i.width,h=i.height; const s=Math.min(1,maxDim/Math.max(w,h)); w=Math.round(w*s);h=Math.round(h*s); const c=document.createElement('canvas');c.width=w;c.height=h; const x=c.getContext('2d'); x.fillStyle='#fff';x.fillRect(0,0,w,h); x.drawImage(i,0,0,w,h); res(c.toDataURL(fmt==='jpeg'?'image/jpeg':'image/png',fmt==='jpeg'?0.82:undefined)); }; i.src=url; }); }
+  async function prepareForStore(u){ if(u.length<=4500000)return u; let v=await downscale(u,2000,'png'); if(v.length<=4500000)return v; v=await downscale(u,1600,'jpeg'); if(v.length<=4500000)return v; return await downscale(u,1200,'jpeg'); }
+  // Each layout (service) can have its own drawing, stored under rpt:image:<key>.
+  // The shared base drawing (rpt:image) is the fallback for layouts without one.
+  const imgKeyFor=key=>'rpt:image:'+key;
+  const loadImageEl=url=>new Promise(res=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=()=>res(null); i.src=url; });
+  function applyDisplayed(){ const c=(active!=='none'&&svcImgCache[active])?svcImgCache[active]:(baseImg?{img:baseImg,url:baseUrl}:null); const ni=c?c.img:null; const changed= ni!==_shownImg; _shownImg=ni; img=ni; imgUrl=c?c.url:null; srcCanvas=null; $('empty').classList.toggle('hidden', !!img); syncControls(); return changed; }
+  function setBaseImage(url,store){ return new Promise(async res=>{ const i=new Image(); i.onload=async()=>{ baseImg=i; baseUrl=url; if(applyDisplayed()){ fit(); render(); } if(store){ try{ const su=await prepareForStore(url); baseUrl=su; if(_shownImg===i)imgUrl=su; try{await window.storage.set(IMG_KEY,su,true);}catch(e){} try{await window.storage.set(IMG_KEY,su,false);}catch(e){} }catch(e){console.warn(e);} } res(); }; i.onerror=()=>res(); i.src=url; }); }
+  async function setServiceImage(key,url,store){ const el=await loadImageEl(url); if(!el)return; svcImgCache[key]={img:el,url}; if(!services[key])services[key]={routes:[],entries:[],target:null,hasImage:false}; services[key].hasImage=true; if(key===active){ applyDisplayed(); fit(); render(); } if(store){ try{ const su=await prepareForStore(url); svcImgCache[key].url=su; if(key===active&&_shownImg===el)imgUrl=su; try{await window.storage.set(imgKeyFor(key),su,true);}catch(e){} try{await window.storage.set(imgKeyFor(key),su,false);}catch(e){} }catch(e){console.warn(e);} await saveData(); } }
+  async function loadServiceImage(key){ if(key==='none'||!services[key]||!services[key].hasImage||svcImgCache[key])return; try{ let r=await window.storage.get(imgKeyFor(key),true); if(!(r&&r.value)) r=await window.storage.get(imgKeyFor(key),false); if(r&&r.value){ const el=await loadImageEl(r.value); if(el){ svcImgCache[key]={img:el,url:r.value}; if(key===active){ if(applyDisplayed())fit(); render(); } } } }catch(e){} }
+  async function onFile(f){ if(!f)return; showSpin(true,isPdf(f)?'Rendering PDF…':'Saving…'); try{ const url=await fileToImageUrl(f); await setBaseImage(url,true);}catch(e){ console.warn(e); flashBar('Could not read that file'); } showSpin(false); }
+
+  // ---------- geometry ----------
+  const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+  function cum(p){ let L=[0]; for(let i=1;i<p.length;i++)L.push(L[i-1]+dist(p[i-1],p[i])); return L; }
+  function ptAt(p,c,t){ const tot=c[c.length-1]; if(t<=0)return{...p[0]}; if(t>=tot)return{...p[p.length-1]}; for(let i=0;i<c.length-1;i++){ if(t<=c[i+1]){ const f=(t-c[i])/((c[i+1]-c[i])||1); return{x:p[i].x+(p[i+1].x-p[i].x)*f,y:p[i].y+(p[i+1].y-p[i].y)*f}; } } return{...p[p.length-1]}; }
+  function subPoly(p,f0,f1){ const c=cum(p),tot=c[c.length-1]; const t0=Math.max(0,f0)*tot,t1=Math.min(1,f1)*tot; const out=[ptAt(p,c,t0)]; for(let i=0;i<p.length;i++){ if(c[i]>t0+0.01&&c[i]<t1-0.01)out.push({...p[i]}); } out.push(ptAt(p,c,t1)); return out; }
+  const laneOff=()=>img?Math.max(6,Math.min(42,Math.min(img.width,img.height)/150)):8;
+  function offsetPts(p,d){ const L=[],R=[]; for(let i=0;i<p.length;i++){ let dx,dy; if(i===0){dx=p[1].x-p[0].x;dy=p[1].y-p[0].y;} else if(i===p.length-1){dx=p[i].x-p[i-1].x;dy=p[i].y-p[i-1].y;} else{dx=p[i+1].x-p[i-1].x;dy=p[i+1].y-p[i-1].y;} const len=Math.hypot(dx,dy)||1,nx=-dy/len,ny=dx/len; L.push({x:p[i].x+nx*d,y:p[i].y+ny*d}); R.push({x:p[i].x-nx*d,y:p[i].y-ny*d}); } return {L,R}; }
+  const ptAtFrac=(r,f)=>{ const c=cum(r.points); return ptAt(r.points,c,Math.max(0,Math.min(1,f))*c[c.length-1]); };
+  function projOnRoute(r,pt){ const p=r.points,c=cum(p),tot=c[c.length-1]||1,span=r.end-r.start; let best={d:Infinity,ch:r.start,x:p[0].x,y:p[0].y}; for(let i=0;i<p.length-1;i++){ const a=p[i],b=p[i+1],dx=b.x-a.x,dy=b.y-a.y,l2=dx*dx+dy*dy; let t=l2?((pt.x-a.x)*dx+(pt.y-a.y)*dy)/l2:0; t=Math.max(0,Math.min(1,t)); const px=a.x+t*dx,py=a.y+t*dy,d=Math.hypot(pt.x-px,pt.y-py); if(d<best.d){ const along=c[i]+t*Math.hypot(dx,dy); best={d,ch:r.start+(along/tot)*span,x:px,y:py}; } } return best; }
+  function projNearest(pt){ let best=null; routes.forEach(r=>{ const pr=projOnRoute(r,pt); if(!best||pr.d<best.d)best={...pr,routeId:r.id}; }); return best; }
+  const station=m=>{ const s=m<0?'-':''; m=Math.abs(m); return s+Math.floor(m/1000)+'+'+String(Math.round(m%1000)).padStart(3,'0'); };
+  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+  // House date format: DD-MMM-YY (ISO kept internally for sorting)
+  const MMM=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const fmtD=iso=>{ if(!iso)return ''; const m=String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/); return m? (m[3]+'-'+MMM[+m[2]-1]+'-'+m[1].slice(2)) : String(iso); };
+
+  // sideKey 'C' (single line) matches every entry on the route; 'L'/'R' match that side or 'B'
+  function profile(routeId,sideKey){ const r=routes.find(x=>x.id===routeId); const es=entries.filter(e=>e.routeId===routeId&&(sideKey==='C'||e.side===sideKey||e.side==='B')).map(e=>({lo:Math.min(e.from,e.to),hi:Math.max(e.from,e.to),stage:e.stage,seq:(e.seq!=null?e.seq:(parseInt(String(e.id).slice(1))||0))})); const bps=new Set([r.start,r.end]); es.forEach(e=>{ bps.add(clamp(e.lo,r.start,r.end)); bps.add(clamp(e.hi,r.start,r.end)); }); const arr=[...bps].sort((a,b)=>a-b); const out=[]; for(let i=0;i<arr.length-1;i++){ const a=arr[i],b=arr[i+1]; if(b-a<=0.0001)continue; const mid=(a+b)/2; let clearSeq=-1; es.forEach(e=>{ if(e.stage===0&&mid>=e.lo&&mid<=e.hi)clearSeq=Math.max(clearSeq,e.seq); }); let st=0; es.forEach(e=>{ if(e.stage>0&&e.seq>clearSeq&&mid>=e.lo&&mid<=e.hi)st=Math.max(st,e.stage); }); if(out.length&&out[out.length-1].stage===st)out[out.length-1].to=b; else out.push({from:a,to:b,stage:st}); } return out; }
+
+  function computeAll(){ const dual=isDual(); const sides=dual?['L','R']:['C']; const sL=Array(curStages.length).fill(0); let g={d:0,t:0},gl={d:0,t:0},gr={d:0,t:0}; const per={}; routes.forEach(r=>{ const pr={d:0,t:0,ld:0,lt:0,rd:0,rt:0}; sides.forEach(side=>{ profile(r.id,side).forEach(iv=>{ const l=iv.to-iv.from; if(l<=0)return; if(iv.stage===0){ sL[0]=(sL[0]||0)+l; } else { for(let k=1;k<=iv.stage;k++) sL[k]=(sL[k]||0)+l; } const dn=l*iv.stage/curMax; pr.d+=dn;pr.t+=l; if(side==='L'){pr.ld+=dn;pr.lt+=l;}else if(side==='R'){pr.rd+=dn;pr.rt+=l;} }); }); per[r.id]=pr; g.d+=pr.d;g.t+=pr.t; gl.d+=pr.ld;gl.t+=pr.lt; gr.d+=pr.rd;gr.t+=pr.rt; }); const pc=o=>o.t?o.d/o.t*100:0; return {stageLen:sL,overall:pc(g),L:pc(gl),R:pc(gr),total:g.t,per,dual,pcRoute:r=>pc({d:per[r].d,t:per[r].t}),pcL:r=>pc({d:per[r].ld,t:per[r].lt}),pcR:r=>pc({d:per[r].rd,t:per[r].rt})}; }
+
+  // ---------- view ----------
+  const toScreen=p=>({x:p.x*scale+offX,y:p.y*scale+offY});
+  const toImg=(x,y)=>({x:(x-offX)/scale,y:(y-offY)/scale});
+  function fit(){ if(!img)return; resizeCanvas(); const s=Math.min(cw/img.width,ch/img.height)*0.95; scale=s; offX=(cw-img.width*s)/2; offY=(ch-img.height*s)/2; render(); }
+  function resizeCanvas(){ const r=cv.getBoundingClientRect(); cw=r.width; ch=r.height; dpr=window.devicePixelRatio||1; cv.width=cw*dpr; cv.height=ch*dpr; }
+
+  function render(){
+    resizeCanvas(); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,cw,ch); if(!img)return;
+    ctx.drawImage(img,offX,offY,img.width*scale,img.height*scale);
+    const off=laneOff(), dual=isDual(), sides=dual?['L','R']:['C'];
+    routes.forEach(r=>{ const span=r.end-r.start;
+      if(dual){ const base=offsetPts(r.points,off); drawPoly(base.L,'#aab2c0',6); drawPoly(base.R,'#aab2c0',6); }
+      else { drawPoly(r.points,'#aab2c0',6); }
+      sides.forEach(side=>{ profile(r.id,side).forEach(iv=>{ if(iv.stage>0){ const c=subPoly(r.points,(iv.from-r.start)/span,(iv.to-r.start)/span); const line=dual?offsetPts(c,off)[side]:c; drawPoly(line,curColors[iv.stage]||'#888',8); } }); });
+    });
+    if(showLabels) routes.forEach(drawTicks);
+    if(mode==='trace'&&trace&&trace.points.length){ drawPoly(trace.points,'#60a5fa',3,true); trace.points.forEach(p=>{ const s=toScreen(p); ctx.beginPath();ctx.fillStyle='#60a5fa';ctx.arc(s.x,s.y,5,0,7);ctx.fill(); }); }
+    if(mode==='pick'&&pick&&pick.fromPt){ const s=toScreen(pick.fromPt); ctx.beginPath();ctx.fillStyle='#22c55e';ctx.arc(s.x,s.y,6,0,7);ctx.fill(); }
+    if(previewDetected&&detected){ detected.forEach(d=>{ if(d.include!==false){ drawPoly(d.points,'#a855f7',4); d.points.forEach(p=>{ const s=toScreen(p); ctx.beginPath(); ctx.fillStyle='#a855f7'; ctx.arc(s.x,s.y,3,0,7); ctx.fill(); }); } }); }
+  }
+  function drawPoly(p,color,w,dash){ if(p.length<2)return; ctx.save(); ctx.strokeStyle=color; ctx.lineWidth=w; ctx.lineJoin='round'; ctx.lineCap='round'; if(dash)ctx.setLineDash([7,6]); ctx.beginPath(); const a=toScreen(p[0]); ctx.moveTo(a.x,a.y); for(let i=1;i<p.length;i++){const q=toScreen(p[i]);ctx.lineTo(q.x,q.y);} ctx.stroke(); ctx.restore(); }
+  function niceStep(span){ const raw=span/8; for(const s of [10,20,25,50,100,200,250,500,1000,2000,2500,5000,10000])if(s>=raw)return s; return 10000; }
+  function drawTicks(r){ const span=r.end-r.start; const step=niceStep(span); const off=laneOff(); const list=[]; for(let ch=Math.ceil(r.start/step)*step;ch<r.end;ch+=step)list.push(ch); list.push(r.start); list.push(r.end);
+    ctx.save(); ctx.font='10px -apple-system,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    list.forEach(chv=>{ const f=(chv-r.start)/span; const p=ptAtFrac(r,f); const p2=ptAtFrac(r,Math.min(1,f+0.004)); let dx=p2.x-p.x,dy=p2.y-p.y; if(Math.hypot(dx,dy)<0.01){const p3=ptAtFrac(r,Math.max(0,f-0.004));dx=p.x-p3.x;dy=p.y-p3.y;} const len=Math.hypot(dx,dy)||1,nx=-dy/len,ny=dx/len; const tl=off*1.9; const a=toScreen({x:p.x-nx*tl,y:p.y-ny*tl}),b=toScreen({x:p.x+nx*tl,y:p.y+ny*tl}); ctx.strokeStyle='rgba(30,41,59,.32)'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke(); const lp=toScreen({x:p.x+nx*(tl+10),y:p.y+ny*(tl+10)}); const t=station(chv),w=ctx.measureText(t).width; ctx.fillStyle='rgba(255,255,255,.9)'; ctx.fillRect(lp.x-w/2-3,lp.y-7,w+6,14); ctx.fillStyle='#334155'; ctx.fillText(t,lp.x,lp.y); });
+    ctx.restore();
+  }
+
+  // ---------- interaction ----------
+  // Single pointer = pan / click. Two pointers = pinch-zoom (tablet/site use).
+  let down=null,moved=false;
+  const ptrs=new Map(); let pinch=null;
+  function pinchState(){ const v=[...ptrs.values()]; return {d:Math.hypot(v[0].x-v[1].x,v[0].y-v[1].y)||1, cx:(v[0].x+v[1].x)/2, cy:(v[0].y+v[1].y)/2}; }
+  cv.addEventListener('pointerdown',e=>{ cv.setPointerCapture(e.pointerId); const r=cv.getBoundingClientRect(); const x=e.clientX-r.left,y=e.clientY-r.top; ptrs.set(e.pointerId,{x,y}); if(ptrs.size===2){ down=null; moved=true; const s=pinchState(); pinch={d0:s.d,s0:scale,wx:(s.cx-offX)/scale,wy:(s.cy-offY)/scale}; hideReadout(); } else if(ptrs.size===1){ down={x,y,ox:offX,oy:offY}; moved=false; } });
+  cv.addEventListener('pointermove',e=>{ const r=cv.getBoundingClientRect(); const x=e.clientX-r.left,y=e.clientY-r.top; if(ptrs.has(e.pointerId))ptrs.set(e.pointerId,{x,y}); if(pinch&&ptrs.size>=2){ const s=pinchState(); scale=Math.max(0.05,Math.min(20,pinch.s0*s.d/pinch.d0)); offX=s.cx-pinch.wx*scale; offY=s.cy-pinch.wy*scale; render(); return; } if(!down)return; if(Math.hypot(x-down.x,y-down.y)>5){ moved=true; offX=down.ox+(x-down.x); offY=down.oy+(y-down.y); render(); } });
+  cv.addEventListener('pointerup',e=>{ ptrs.delete(e.pointerId); if(pinch){ if(ptrs.size<2)pinch=null; down=null; return; } if(!down)return; const r=cv.getBoundingClientRect(); const x=e.clientX-r.left,y=e.clientY-r.top; const click=!moved; down=null; if(!click)return; const ip=toImg(x,y);
+    if(mode==='trace'){ trace.points.push(ip); updateTraceMsg(); render(); }
+    else if(mode==='pick'){ doPick(ip); }
+    else if(mode==='eyedrop'){ onEyedrop(ip); }
+    else { showReadout(ip,x,y); }
+  });
+  cv.addEventListener('pointercancel',e=>{ ptrs.delete(e.pointerId); if(ptrs.size<2)pinch=null; down=null; });
+  cv.addEventListener('wheel',e=>{ if(!img)return; e.preventDefault(); const r=cv.getBoundingClientRect(); const mx=e.clientX-r.left,my=e.clientY-r.top; const f=e.deltaY<0?1.12:1/1.12; const ns=Math.max(0.05,Math.min(20,scale*f)); const wx=(mx-offX)/scale,wy=(my-offY)/scale; scale=ns; offX=mx-wx*scale; offY=my-wy*scale; render(); hideReadout(); },{passive:false});
+
+  // Keyboard: Esc cancels the current trace/pick/eyedrop or closes the top
+  // modal; Enter finishes an in-progress trace (when not typing in a field).
+  document.addEventListener('keydown',e=>{
+    const typing=e.target&&/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+    if(e.key==='Escape'){
+      if(!$('prompt').classList.contains('hidden')){ $('pmCancel').click(); return; }
+      if(!$('confirm').classList.contains('hidden')){ ($('cfNo').classList.contains('hidden')?$('cfYes'):$('cfNo')).click(); return; }
+      if(!$('reviewModal').classList.contains('hidden')){ cancelReview(); return; }
+      if(!$('detectModal').classList.contains('hidden')){ $('detectModal').classList.add('hidden'); return; }
+      if(!$('svcPicker').classList.contains('hidden')){ $('svcPicker').classList.add('hidden'); return; }
+      if(!$('modal').classList.contains('hidden')){ $('modal').classList.add('hidden'); return; }
+      if(!$('routeModal').classList.contains('hidden')){ $('routeModal').classList.add('hidden'); return; }
+      if(mode==='trace')cancelTrace(); else if(mode==='pick')cancelPick(); else if(mode==='eyedrop')cancelEyedrop();
+    } else if(e.key==='Enter'&&!typing&&mode==='trace'){ finishTrace(); }
+  });
+
+  let readoutT=null;
+  function showReadout(ip,sx,sy){ if(!routes.length)return; const pr=projNearest(ip); if(!pr||pr.d*scale>40){hideReadout();return;} const ro=$('readout'); const ar=$('app').getBoundingClientRect(); const cvr=cv.getBoundingClientRect(); ro.textContent=station(pr.ch); ro.style.left=(cvr.left-ar.left+sx)+'px'; ro.style.top=(cvr.top-ar.top+sy)+'px'; ro.classList.remove('hidden'); clearTimeout(readoutT); readoutT=setTimeout(hideReadout,2200); }
+  const hideReadout=()=>$('readout').classList.add('hidden');
+
+  // ---------- service switch ----------
+  function switchService(key){ if(mode!=='idle'){ cancelTrace(); cancelPick(); } commitActive(); active=key; loadActiveRefs(); if(applyDisplayed())fit(); saveData(); refreshUI(); render(); syncControls(); if(active!=='none'&&services[active]&&services[active].hasImage&&!svcImgCache[active]) loadServiceImage(active); }
+
+  // ---------- routes ----------
+  function startRoute(){ const s=svcOf(active); $('routeTitle').textContent='New '+(s?s.name:'')+' route'; $('rErr').textContent=''; $('rName').value=''; $('routeModal').classList.remove('hidden'); $('rName').focus(); }
+  function beginTrace(){ const name=$('rName').value.trim()||((svcOf(active)?svcOf(active).name:'Route')+' '+(routes.length+1)); const start=parseFloat($('rStart').value),end=parseFloat($('rEnd').value); if(isNaN(start)||isNaN(end)){$('rErr').textContent='Fill both chainage fields.';return;} if(end<=start){$('rErr').textContent='End chainage must exceed start.';return;} trace={name,start,end,points:[],id:'r'+Date.now()}; mode='trace'; $('routeModal').classList.add('hidden'); showBar('Click along the centreline. Need at least 2 points. Enter = finish, Esc = cancel.',[['Finish route',finishTrace],['Undo point',undoTrace],['Cancel',cancelTrace,true]]); cv.classList.add('picking'); }
+  function updateTraceMsg(){ const n=trace?trace.points.length:0; $('barMsg').textContent=n<2?('Click along the centreline. Points: '+n+' (need ≥2).'):('Points: '+n+'. Add more, press Enter, or finish.'); }
+  function undoTrace(){ if(trace&&trace.points.length){trace.points.pop();updateTraceMsg();render();} }
+  function cancelTrace(){ if(mode!=='trace')return; mode='idle'; trace=null; hideBar(); cv.classList.remove('picking'); render(); }
+  function finishTrace(){ if(!trace||trace.points.length<2){updateTraceMsg();return;} routes.push({id:trace.id,name:trace.name,start:trace.start,end:trace.end,points:trace.points,by:userName||null,createdAt:new Date().toISOString().slice(0,10)}); mode='idle'; trace=null; hideBar(); cv.classList.remove('picking'); saveData(); refreshUI(); render(); }
+  async function deleteRoute(id){ if(!await uiConfirm('Delete route','Delete this route and all its progress entries on '+(svcOf(active).name)+'? This cannot be undone.'))return; routes=services[active].routes=routes.filter(r=>r.id!==id); entries=services[active].entries=entries.filter(e=>e.routeId!==id); saveData(); refreshUI(); render(); }
+  async function resetRoute(id){ if(!await uiConfirm('Reset route','Clear all progress entries on this route?'))return; entries=services[active].entries=entries.filter(e=>e.routeId!==id); saveData(); refreshUI(); render(); }
+
+  // ---------- update progress ----------
+  function updRangeHint(){ const r=routes.find(x=>x.id===$('mRoute').value); $('mRange').textContent= r? ('Route range: '+station(r.start)+' → '+station(r.end)) : ''; }
+  function openUpdate(pre){ if(active==='none'){ return; } if(!routes.length){ uiAlert('Add a route first','Trace at least one '+svcOf(active).name+' route before logging progress.'); return; }
+    const dual=isDual();
+    const sel=$('mRoute'); sel.innerHTML=''; routes.forEach(r=>{ const o=document.createElement('option'); o.value=r.id; o.textContent=r.name; sel.appendChild(o); });
+    sel.onchange=updRangeHint;
+    const ss=$('mStage'); ss.innerHTML=''; { const o=document.createElement('option'); o.value=0; o.textContent='↺ Not started (clear area)'; ss.appendChild(o); } for(let i=1;i<curStages.length;i++){ const o=document.createElement('option'); o.value=i; o.textContent=curStages[i]; ss.appendChild(o); }
+    $('updTitle').textContent='Update progress — '+svcOf(active).name;
+    pre=pre||{};
+    $('sideWrap').style.display = dual?'':'none';
+    if(dual){ let s=(pre.side&&pre.side!=='C')?pre.side:(curSide==='C'?'B':curSide); curSide=s; setSide(s); } else { curSide='C'; }
+    if(pre.routeId)sel.value=pre.routeId;
+    updRangeHint();
+    $('mFrom').value= pre.from!=null? Math.round(pre.from):''; $('mTo').value= pre.to!=null? Math.round(pre.to):''; $('mStage').value= pre.stage!=null?pre.stage:1; $('mWir').value= pre.wir||''; $('mErr').textContent='';
+    $('modal').classList.remove('hidden');
+  }
+  function setSide(s){ curSide=s; [...$('mSide').children].forEach(b=>b.classList.toggle('on',b.dataset.s===s)); }
+  function saveEntry(){ const routeId=$('mRoute').value; const r=routes.find(x=>x.id===routeId); let from=parseFloat($('mFrom').value),to=parseFloat($('mTo').value); const stage=parseInt($('mStage').value); if(isNaN(from)||isNaN(to)){$('mErr').textContent='Enter both chainages.';return;} from=clamp(from,r.start,r.end); to=clamp(to,r.start,r.end); if(Math.abs(to-from)<0.5){$('mErr').textContent='From and To must differ.';return;} if(to<from){const t=from;from=to;to=t;} const wir=$('mWir').value.trim(); if(!wir){$('mErr').textContent='Enter the WIR No. — progress cannot be saved without it.'; $('mWir').focus(); return;} const side=isDual()?curSide:'C'; entries.push(mkEntry(side,from,to,stage,new Date().toISOString().slice(0,10),routeId,userName,wir)); $('modal').classList.add('hidden'); saveData(); refreshUI(); render(); }
+  function startPick(){ const pre={routeId:$('mRoute').value,side:curSide,from:$('mFrom').value?parseFloat($('mFrom').value):null,to:$('mTo').value?parseFloat($('mTo').value):null,stage:parseInt($('mStage').value),wir:$('mWir').value.trim()}; pick={step:1,pending:pre,routeId:null,from:null,fromPt:null}; mode='pick'; $('modal').classList.add('hidden'); cv.classList.add('picking'); showBar('Click the START point on the route. Esc = cancel.',[['Cancel',cancelPick,true]]); }
+  function doPick(ip){ const pr=projNearest(ip); if(!pr)return; if(pick.step===1){ pick.routeId=pr.routeId; pick.from=pr.ch; pick.fromPt={x:pr.x,y:pr.y}; pick.step=2; $('barMsg').textContent='Start '+station(pr.ch)+' set. Now click the END point.'; render(); } else { const r=routes.find(x=>x.id===pick.routeId); const pr2=projOnRoute(r,ip); const pre=pick.pending; pre.routeId=pick.routeId; pre.from=pick.from; pre.to=pr2.ch; mode='idle'; cv.classList.remove('picking'); hideBar(); pick=null; render(); openUpdate(pre); } }
+  function cancelPick(){ if(mode!=='pick')return; const pre=pick?pick.pending:null; mode='idle'; pick=null; cv.classList.remove('picking'); hideBar(); render(); openUpdate(pre); }
+  async function deleteEntry(id){ if(!await uiConfirm('Delete entry','Remove this progress entry from the shared board? This cannot be undone.'))return; entries=services[active].entries=entries.filter(e=>e.id!==id); saveData(); refreshUI(); render(); }
+
+  // ---------- bar / confirm ----------
+  function showBar(msg,btns){ $('barMsg').textContent=msg; const wrap=$('barBtns'); wrap.innerHTML=''; (btns||[]).forEach(([label,fn,ghost])=>{ const b=document.createElement('button'); b.textContent=label; if(ghost)b.className='ghost'; b.onclick=fn; wrap.appendChild(b); }); $('bar').classList.remove('hidden'); }
+  const hideBar=()=>$('bar').classList.add('hidden');
+  let barTimer=null; function flashBar(msg){ if(mode!=='idle')return; $('barMsg').textContent=msg; $('barBtns').innerHTML=''; $('bar').classList.remove('hidden'); clearTimeout(barTimer); barTimer=setTimeout(()=>$('bar').classList.add('hidden'),2600); }
+  function uiConfirm(title,msg){ return new Promise(res=>{ $('cfTitle').textContent=title; $('cfMsg').textContent=msg; $('cfYes').textContent='Confirm'; $('cfYes').className='danger'; $('cfNo').classList.remove('hidden'); $('confirm').classList.remove('hidden'); const done=v=>{ $('confirm').classList.add('hidden'); res(v); }; $('cfYes').onclick=()=>done(true); $('cfNo').onclick=()=>done(false); }); }
+  function uiAlert(title,msg){ $('cfTitle').textContent=title; $('cfMsg').textContent=msg; $('cfYes').textContent='OK'; $('cfYes').className=''; $('cfNo').classList.add('hidden'); $('confirm').classList.remove('hidden'); $('cfYes').onclick=()=>$('confirm').classList.add('hidden'); }
+  function uiPrompt(title,msg,val){ return new Promise(res=>{ $('pmTitle').textContent=title; $('pmMsg').textContent=msg||''; $('pmErr').textContent=''; const i=$('pmInput'); i.value=val||''; $('prompt').classList.remove('hidden'); setTimeout(()=>{i.focus();i.select();},30); const done=v=>{ $('prompt').classList.add('hidden'); i.onkeydown=null; res(v); }; $('pmOk').onclick=()=>done(i.value.trim()); $('pmCancel').onclick=()=>done(null); i.onkeydown=e=>{ if(e.key==='Enter')done(i.value.trim()); else if(e.key==='Escape')done(null); }; }); }
+
+  // ---------- identity / roles (#4) ----------
+  function renderWho(){ $('whoLbl').textContent='👤 '+(userName?userName:'Set your name…'); }
+  function setUserName(n){ userName=(n||'').trim(); try{ localStorage.setItem('rpt:user',userName); }catch(e){} renderWho(); }
+  async function requireName(){ if(userName)return true; const n=await uiPrompt('Your name','Enter your name so progress updates are attributed to you.',''); if(n==null||!n.trim())return false; setUserName(n); return true; }
+  function applyEditMode(){ $('btnMode').textContent= editMode?'✎ Editing':'👁 Viewing'; $('btnMode').classList.toggle('modeView',!editMode); syncControls(); refreshUI(); }
+  function setEditMode(v){ editMode=v; try{ localStorage.setItem('rpt:editmode',v?'1':'0'); }catch(e){} applyEditMode(); }
+  async function toggleMode(){ if(!editMode){ if(!await requireName())return; } setEditMode(!editMode); }
+
+  // ---------- target quantity (#3) ----------
+  function saveTarget(){ if(active==='none'||!services[active])return; const q=$('qtyTarget').value, u=$('qtyUnit').value.trim(); services[active].target={qty: q===''?null:Number(q), unit:u||null}; saveData(); refreshUI(); }
+
+  // ----- service picker (project scope) -----
+  function buildPickerList(isChecked){ const wrap=$('spList'); wrap.innerHTML=''; const units=scopeUnits(); let lastCat=null; units.forEach((u,idx)=>{ if(u.cat!==lastCat){ const h=document.createElement('div'); h.className='spcat'; h.textContent=u.cat; wrap.appendChild(h); lastCat=u.cat; } const row=document.createElement('label'); row.className='sprow'; const cb=document.createElement('input'); cb.type='checkbox'; cb.dataset.idx=idx; cb.checked=isChecked(u); const sp=document.createElement('span'); sp.textContent=u.label; row.append(cb,sp); wrap.appendChild(row); }); wrap._units=units; }
+  function openServicePicker(isNew){ $('spTitle').textContent= isNew?'Select services in this project':'Manage project services'; $('spErr').textContent=''; const isChecked= isNew? (()=>false) : (u=>u.keys.every(inScope)); buildPickerList(isChecked); $('svcPicker').classList.remove('hidden'); }
+  function savePicker(){ const wrap=$('spList'), units=wrap._units, set=new Set(); wrap.querySelectorAll('input[type=checkbox]').forEach(cb=>{ if(cb.checked) units[+cb.dataset.idx].keys.forEach(k=>set.add(k)); }); scope=[...set]; if(active!=='none' && !inScope(active)){ active=firstScopedKey(); loadActiveRefs(); } $('svcPicker').classList.add('hidden'); saveData(); refreshUI(); render(); syncControls(); }
+  const fmtN=n=>Math.round(n||0).toLocaleString();
+  // Installed = built through the last PHYSICAL activity (the phase before a
+  // final "Complete" sign-off, if the template has one). Cumulative, so it
+  // counts everything that has reached at least that phase.
+  function installedQty(C){ const lastIsComplete=(curStages[curMax]||'').toLowerCase()==='complete'; const physIdx= lastIsComplete?Math.max(1,curMax-1):curMax; const isCnt=isCountSvc(active); const installed= isCnt? entries.filter(e=>e.stage>=physIdx).length : (C.stageLen[physIdx]||0); return {installed,physIdx,isCnt,physName:curStages[physIdx]||'Complete'}; }
+
+  // run fn with globals temporarily pointed at another layer, then restore
+  function withLayer(key,fn){ const sv={active,routes,entries,curStages,curColors,curMax}; active=key; loadActiveRefs(); const r=fn(); active=sv.active; routes=sv.routes; entries=sv.entries; curStages=sv.curStages; curColors=sv.curColors; curMax=sv.curMax; return r; }
+
+  // ---------- reporting (#5) ----------
+  const sideLabel=s=> s==='B'?'Both':s==='L'?'LHS':s==='R'?'RHS':'';
+  function exportCsv(){ const rows=[['Layer','Route','Side','From (m)','To (m)','Length (m)','Activity','WIR No.','Date','By']]; Object.keys(services).forEach(key=>{ const s=svcOf(key), d=services[key]; if(!s||!d)return; (d.entries||[]).forEach(e=>{ const r=(d.routes||[]).find(x=>x.id===e.routeId); const stg= e.stage===0?'Cleared (Not started)':((s.stages[e.stage])||('Stage '+e.stage)); rows.push([s.name, r?r.name:'?', sideLabel(e.side), Math.round(Math.min(e.from,e.to)), Math.round(Math.max(e.from,e.to)), Math.round(Math.abs(e.to-e.from)), stg, e.wir||'', fmtD(e.date)||'', e.by||'']); }); }); const cell=v=>{ v=String(v==null?'':v); return /[",\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }; const csv=rows.map(r=>r.map(cell).join(',')).join('\r\n'); triggerDownload('infra-progress-'+new Date().toISOString().slice(0,10)+'.csv','data:text/csv;charset=utf-8,'+encodeURIComponent('\uFEFF'+csv)); }
+  function layerSummary(){ const out=[]; Object.keys(services).forEach(key=>{ const d=services[key]; if(!d||!(d.routes&&d.routes.length))return; const C=withLayer(key,()=>computeAll()); out.push({name:svcOf(key).name, routes:d.routes.length, overall:C.overall, total:C.total}); }); return out; }
+  function openReport(){
+    const today=new Date().toISOString().slice(0,10);
+    const board=(window.__INFRA_SYNC__&&window.__INFRA_SYNC__.board)||'default';
+    const w=window.open('','_blank'); if(!w){ flashBar('Allow pop-ups to open the report'); return; }
+    const summary=layerSummary();
+    let body='';
+    body+='<h1>Infrastructure Progress Report</h1>';
+    body+='<div class="meta">Project board: <b>'+esc(board)+'</b> &nbsp;·&nbsp; Date: <b>'+fmtD(today)+'</b> &nbsp;·&nbsp; Prepared by: <b>'+esc(userName||'—')+'</b></div>';
+    body+='<h2>All layers summary</h2>';
+    if(!summary.length) body+='<p class="muted">No progress recorded yet.</p>';
+    else{ body+='<table><tr><th>Layer</th><th class="r">Routes</th><th class="r">Length (m)</th><th class="r">Overall %</th></tr>'; summary.forEach(s=>{ body+='<tr><td>'+esc(s.name)+'</td><td class="r">'+s.routes+'</td><td class="r">'+fmtN(s.total)+'</td><td class="r">'+s.overall.toFixed(1)+'%</td></tr>'; }); body+='</table>'; }
+    if(active!=='none'){
+      const svc=svcOf(active), C=computeAll();
+      const II=installedQty(C), isCnt=II.isCnt, installed=II.installed, tgt=services[active].target||{}, unit=(tgt.unit&&tgt.unit.trim())||(isCnt?'no.':'m');
+      const tq=(tgt.qty!=null&&tgt.qty!=='')?Number(tgt.qty):null;
+      body+='<h2>'+esc(svc.name)+' — detail</h2>';
+      body+='<div class="kpis"><div class="kpi"><div class="kv">'+(C.total?C.overall.toFixed(1)+'%':'—')+'</div><div class="kl">Overall (weighted)</div></div>';
+      body+='<div class="kpi"><div class="kv">'+fmtN(installed)+(tq!=null?(' / '+fmtN(tq)):'')+' '+esc(unit)+'</div><div class="kl">Installed (through '+esc(II.physName)+')</div></div>';
+      if(C.dual&&C.total){ body+='<div class="kpi"><div class="kv">'+C.L.toFixed(0)+'% / '+C.R.toFixed(0)+'%</div><div class="kl">LHS / RHS</div></div>'; }
+      body+='</div>';
+      body+='<h3>Activities complete (cumulative)</h3><table><tr><th>Activity</th><th class="r">Metres complete</th></tr>'; curStages.forEach((n,i)=>{ body+='<tr><td><span class="sw" style="background:'+curColors[i]+'"></span>'+esc(n)+'</td><td class="r">'+fmtN(C.stageLen[i]||0)+'</td></tr>'; }); body+='</table>';
+      body+='<h3>Routes</h3><table><tr><th>Route</th><th>From → To</th><th class="r">Length (m)</th><th class="r">Progress</th></tr>'; routes.forEach(r=>{ body+='<tr><td>'+esc(r.name)+'</td><td>'+station(r.start)+' → '+station(r.end)+'</td><td class="r">'+fmtN(r.end-r.start)+'</td><td class="r">'+C.pcRoute(r.id).toFixed(0)+'%</td></tr>'; }); if(!routes.length)body+='<tr><td colspan="4" class="muted">No routes.</td></tr>'; body+='</table>';
+      const cnv=buildAnnotatedCanvas(); if(cnv){ body+='<h3>Annotated drawing</h3><img class="dwg" src="'+cnv.toDataURL('image/png')+'">'; }
+      const sorted=[...entries].sort((a,b)=>{ if(a.routeId!==b.routeId)return a.routeId<b.routeId?-1:1; return Math.min(a.from,a.to)-Math.min(b.from,b.to); });
+      body+='<h3>Progress log</h3><table><tr><th>Route</th><th>Side</th><th>Chainage</th><th>Activity</th><th>WIR No.</th><th>Date</th><th>By</th></tr>'; sorted.forEach(e=>{ const r=routes.find(x=>x.id===e.routeId); const act=e.stage===0?'Cleared':(curStages[e.stage]||('Stage '+e.stage)); body+='<tr><td>'+esc(r?r.name:'?')+'</td><td>'+(sideLabel(e.side)||'—')+'</td><td>'+station(Math.min(e.from,e.to))+' → '+station(Math.max(e.from,e.to))+'</td><td>'+esc(act)+'</td><td>'+esc(e.wir||'')+'</td><td>'+fmtD(e.date)+'</td><td>'+esc(e.by||'')+'</td></tr>'; }); if(!sorted.length)body+='<tr><td colspan="7" class="muted">No entries.</td></tr>'; body+='</table>';
+    }
+    const html='<!DOCTYPE html><html><head><meta charset="utf-8"><title>Progress Report — '+fmtD(today)+'</title><style>'
+      +'body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#1f2937;margin:0;padding:28px;max-width:980px}'
+      +'h1{font-size:22px;margin:0 0 4px}h2{font-size:16px;margin:26px 0 8px;border-bottom:1px solid #e5e7eb;padding-bottom:4px}h3{font-size:13.5px;margin:18px 0 6px;color:#374151}'
+      +'.meta{color:#6b7280;font-size:12.5px;margin-bottom:8px}.muted{color:#9aa1ac}'
+      +'table{border-collapse:collapse;width:100%;font-size:12px;margin:4px 0 8px}th,td{border:1px solid #e5e7eb;padding:5px 8px;text-align:left}th{background:#f9fafb}td.r,th.r{text-align:right}'
+      +'.sw{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px;border:1px solid rgba(0,0,0,.1)}'
+      +'.kpis{display:flex;gap:12px;flex-wrap:wrap;margin:8px 0}.kpi{border:1px solid #e5e7eb;border-radius:10px;padding:10px 14px;min-width:140px}.kv{font-size:20px;font-weight:700}.kl{font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px}'
+      +'.dwg{max-width:100%;border:1px solid #e5e7eb;border-radius:8px}'
+      +'.bar{margin-bottom:16px}button{font:inherit;font-size:13px;padding:8px 14px;border-radius:8px;border:1px solid #2563eb;background:#2563eb;color:#fff;cursor:pointer}'
+      +'@media print{.no-print{display:none}body{padding:0}}'
+      +'</style></head><body><div class="bar no-print"><button onclick="window.print()">🖨 Print / Save as PDF</button></div>'+body+'</body></html>';
+    w.document.write(html); w.document.close();
+  }
+
+  // ---------- UI ----------
+  function refreshUI(){
+    renderLayoutSelectors();
+    const svc=svcOf(active);
+    if(active==='none'){
+      $('overallTitle').textContent='Overall progress'; $('legendTitle').textContent='Stage legend';
+      $('overallPct').textContent='—'; $('overallBar').style.width='0%'; $('overallSub').textContent='Base layout — no service selected'; $('splitRow').innerHTML='';
+      $('legend').innerHTML='<div class="muted">Pick a service from the top bar to view and log progress.</div>';
+      $('routeList').innerHTML='<div class="muted">No service selected.</div>'; $('logList').innerHTML='<div class="muted">—</div>';
+      $('qtyCard').style.display='none';
+      $('btnLabels').textContent='Labels: '+(showLabels?'on':'off'); return;
+    }
+    $('overallTitle').textContent=svc.name+' — overall';
+    $('legendTitle').textContent=svc.name+' — activities complete (m)';
+    const C=computeAll();
+    const leg=$('legend'); leg.innerHTML=''; curStages.forEach((n,i)=>{ const d=document.createElement('div'); d.className='lrow'; d.innerHTML='<span class="sw" style="background:'+curColors[i]+'"></span>'+n+'<span class="lcount">'+Math.round(C.stageLen[i]||0)+' m</span>'; leg.appendChild(d); });
+    $('overallPct').textContent= C.total? C.overall.toFixed(1)+'%':'—';
+    $('overallBar').style.width=(C.total?C.overall:0)+'%';
+    let rl=0; routes.forEach(r=>rl+=(r.end-r.start)); $('overallSub').textContent= routes.length? (routes.length+' route'+(routes.length>1?'s':'')+' · '+rl+' m · '+entries.length+' entries'):'No routes yet';
+    $('splitRow').innerHTML= (C.dual&&C.total)? ('<div class="sb"><div class="k">LHS</div><div class="v">'+C.L.toFixed(0)+'%</div></div><div class="sb"><div class="k">RHS</div><div class="v">'+C.R.toFixed(0)+'%</div></div>'):'';
+    // ----- installed quantity vs target (#3) -----
+    $('qtyCard').style.display='';
+    const II=installedQty(C); const isCnt=II.isCnt, installed=II.installed;
+    const tgt=services[active].target||{}, defUnit=isCnt?'no.':'m', unit=(tgt.unit&&tgt.unit.trim())||defUnit;
+    const tq=(tgt.qty!=null&&tgt.qty!=='')?Number(tgt.qty):null;
+    $('qtyVal').textContent= (tq!=null&&tq>0)? (fmtN(installed)+' / '+fmtN(tq)+' '+unit) : (fmtN(installed)+' '+unit);
+    $('qtyBar').style.width= (tq!=null&&tq>0)? clamp(installed/tq*100,0,100)+'%' : '0%';
+    $('qtySub').textContent= (isCnt?'Items through “':'Metres through “')+II.physName+'”'+(tq!=null&&tq>0?(' · '+(installed/tq*100).toFixed(0)+'% of target'):'');
+    $('qtyTarget').value= tq!=null? tq : ''; $('qtyUnit').value= tgt.unit||''; $('qtyUnit').placeholder=defUnit;
+    $('qtyTarget').disabled=!editMode; $('qtyUnit').disabled=!editMode;
+    const rlst=$('routeList');
+    if(!routes.length) rlst.innerHTML='<div class="muted">No routes yet. Click “+ Add route”.</div>';
+    else{ rlst.innerHTML=''; routes.forEach(r=>{ const el=document.createElement('div'); el.className='ritem'; const meta= C.dual? (station(r.start)+' → '+station(r.end)+' · L '+C.pcL(r.id).toFixed(0)+'% / R '+C.pcR(r.id).toFixed(0)+'% · '+C.pcRoute(r.id).toFixed(0)+'%') : (station(r.start)+' → '+station(r.end)+' · '+C.pcRoute(r.id).toFixed(0)+'%'); el.innerHTML='<div class="rn">'+esc(r.name)+'</div><div class="rm">'+meta+'</div>'; if(editMode){ const bb=document.createElement('div'); bb.className='rb'; const b1=document.createElement('button'); b1.textContent='Reset'; b1.onclick=()=>resetRoute(r.id); const b2=document.createElement('button'); b2.className='danger'; b2.textContent='Delete'; b2.onclick=()=>deleteRoute(r.id); bb.append(b1,b2); el.appendChild(bb); } rlst.appendChild(el); }); }
+    const log=$('logList'); const sorted=[...entries].sort((a,b)=>{ if(a.routeId!==b.routeId)return a.routeId<b.routeId?-1:1; return Math.min(a.from,a.to)-Math.min(b.from,b.to); });
+    if(!sorted.length) log.innerHTML='<div class="muted">No entries yet. Click “Update progress”.</div>';
+    else{ log.innerHTML=''; sorted.forEach(e=>{ const r=routes.find(x=>x.id===e.routeId); const sl=e.side==='C'?'':(e.side==='B'?'Both':(e.side==='L'?'LHS':(e.side==='R'?'RHS':''))); const act=e.stage===0?'Cleared (Not started)':(curStages[e.stage]||('Stage '+e.stage)); const it=document.createElement('div'); it.className='logItem'; it.innerHTML='<span class="logDot" style="background:'+(curColors[e.stage]||'#888')+'"></span><div class="logTxt"><span class="lr">'+esc(r?r.name:'?')+(sl?' · '+sl:'')+'</span><div class="lm">'+station(Math.min(e.from,e.to))+' → '+station(Math.max(e.from,e.to))+' · '+act+(e.wir?' · '+esc(e.wir):'')+(e.date?' · '+fmtD(e.date):'')+(e.by?' · '+esc(e.by):'')+'</div></div>'; if(editMode){ const x=document.createElement('button'); x.className='logDel'; x.textContent='×'; x.title='Delete entry'; x.onclick=()=>deleteEntry(e.id); it.appendChild(x); } log.appendChild(it); }); }
+    $('btnLabels').textContent='Labels: '+(showLabels?'on':'off');
+  }
+  const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  // ---------- export ----------
+  function buildAnnotatedCanvas(){ if(!img)return null; const c=document.createElement('canvas'); c.width=img.width; c.height=img.height; const x=c.getContext('2d'); x.drawImage(img,0,0); const S=Math.max(img.width,img.height),lw=Math.max(2.5,S/420),off=laneOff(),dual=isDual(),sides=dual?['L','R']:['C'];
+    const stroke=(p,col,w)=>{ if(p.length<2)return; x.strokeStyle=col; x.lineWidth=w; x.lineCap='round'; x.lineJoin='round'; x.beginPath(); x.moveTo(p[0].x,p[0].y); for(let i=1;i<p.length;i++)x.lineTo(p[i].x,p[i].y); x.stroke(); };
+    routes.forEach(r=>{ const span=r.end-r.start; if(dual){ const base=offsetPts(r.points,off); stroke(base.L,'#9aa3b2',lw*0.8); stroke(base.R,'#9aa3b2',lw*0.8); } else { stroke(r.points,'#9aa3b2',lw*0.8); } sides.forEach(side=>{ profile(r.id,side).forEach(iv=>{ if(iv.stage>0){ const cc=subPoly(r.points,(iv.from-r.start)/span,(iv.to-r.start)/span); stroke(dual?offsetPts(cc,off)[side]:cc,curColors[iv.stage]||'#888',lw); } }); }); });
+    return c; }
+  // PNG export carries a presentation-ready title strip: service, overall %,
+  // board, cut-off date (DD-MMM-YY), author, and the stage legend.
+  function exportPng(){ const base=buildAnnotatedCanvas(); if(!base)return; const C=computeAll(); const svc=svcOf(active);
+    const H=Math.round(Math.max(56,Math.min(140,base.width/14)));
+    const c=document.createElement('canvas'); c.width=base.width; c.height=base.height+H; const x=c.getContext('2d');
+    x.fillStyle='#ffffff'; x.fillRect(0,0,c.width,H); x.drawImage(base,0,H);
+    x.strokeStyle='#e5e7eb'; x.lineWidth=1; x.beginPath(); x.moveTo(0,H-0.5); x.lineTo(c.width,H-0.5); x.stroke();
+    const pad=Math.round(H*0.28), f1=Math.round(H*0.3), f2=Math.round(H*0.18);
+    x.textBaseline='middle'; x.textAlign='left';
+    x.fillStyle='#111827'; x.font='700 '+f1+'px -apple-system,Segoe UI,Roboto,sans-serif';
+    x.fillText((svc?svc.name:'Base layout')+(C.total?('  ·  '+C.overall.toFixed(1)+'%'):''), pad, Math.round(H*0.34));
+    x.fillStyle='#6b7280'; x.font=f2+'px -apple-system,Segoe UI,Roboto,sans-serif';
+    x.fillText('Board: '+((window.__INFRA_SYNC__&&window.__INFRA_SYNC__.board)||'default')+'    Cut-off: '+fmtD(new Date().toISOString().slice(0,10))+(userName?('    By: '+userName):''), pad, Math.round(H*0.72));
+    // stage legend, right-aligned, drops items if it would collide with the title
+    x.font=f2+'px -apple-system,Segoe UI,Roboto,sans-serif'; x.textAlign='right';
+    let lx=c.width-pad; const sw=Math.round(f2*0.9), ly=Math.round(H*0.5);
+    for(let i=curStages.length-1;i>=1;i--){ const t=curStages[i]; const w=x.measureText(t).width; if(lx-w-sw-24 < c.width*0.5) break; x.fillStyle='#374151'; x.fillText(t,lx,ly); lx-=w+6; x.fillStyle=curColors[i]; x.fillRect(lx-sw,ly-Math.round(sw/2),sw,sw); lx-=sw+18; }
+    x.textAlign='left';
+    triggerDownload((svcOf(active)?svcOf(active).key:'base')+'-progress-'+new Date().toISOString().slice(0,10)+'.png', c.toDataURL('image/png')); }
+  function exportBoard(){ commitActive(); const blob={v:2,image:imgUrl||null,active,showLabels,services}; triggerDownload('infra-progress-board-'+new Date().toISOString().slice(0,10)+'.json', URL.createObjectURL(new Blob([JSON.stringify(blob)],{type:'application/json'}))); }
+  async function importBoard(file){ if(!file)return; showSpin(true,'Importing…'); try{ const txt=await file.text(); const o=JSON.parse(txt); if(o.image) await setBaseImage(o.image,true); applyData(o); await saveData(); try{ if(imgUrl)await window.storage.set(IMG_KEY,imgUrl,false); }catch(e){} refreshUI(); fit(); render(); syncControls(); flashBar('Board imported'); }catch(e){ flashBar('Import failed — not a valid board file'); } showSpin(false); }
+
+  async function resetAll(){ if(!await uiConfirm('Reset everything','Reset the drawing and ALL services (routes, progress and per-layout drawings for every discipline)? This cannot be undone.'))return; const imgKeys=Object.keys(services).filter(k=>services[k]&&services[k].hasImage); services=emptyServices(); scope=null; active='roadworks'; loadActiveRefs(); img=null; imgUrl=null; baseImg=null; baseUrl=null; _shownImg=null; for(const k in svcImgCache)delete svcImgCache[k]; for(const sh of [true,false]){ try{await window.storage.delete(IMG_KEY,sh);}catch(e){} try{await window.storage.delete(DATA_KEY,sh);}catch(e){} for(const k of imgKeys){ try{await window.storage.delete(imgKeyFor(k),sh);}catch(e){} } } $('empty').classList.remove('hidden'); syncControls(); refreshUI(); render(); }
+
+  function syncControls(){ const hasImg=!!img, canEdit=hasImg&&active!=='none'&&editMode; $('btnRoute').disabled=!canEdit; $('btnDetect').disabled=!(active!=='none'&&editMode); $('btnUpdate').disabled=!canEdit; $('btnFit').disabled=!hasImg; $('btnLabels').disabled=!hasImg; $('btnExport').disabled=!hasImg; $('btnReport').disabled=false; $('btnCsv').disabled=false; $('btnLoad').disabled=!editMode; const l2=$('btnLoad2'); if(l2)l2.disabled=!editMode; $('btnReset').disabled=!editMode; $('btnServices').disabled=!editMode; }
+  const showSpin=(on,txt)=>{ if(txt)$('spinTxt').textContent=txt; $('spinner').classList.toggle('hidden',!on); };
+  function triggerDownload(filename,href){ const a=document.createElement('a'); a.href=href; a.download=filename; a.style.display='none'; document.body.appendChild(a); a.click(); setTimeout(()=>{ try{ a.remove(); if(String(href).slice(0,5)==='blob:')URL.revokeObjectURL(href); }catch(e){} },1500); }
+
+  // ================= AUTO-DETECT ROUTES FROM COLOURED LINES =================
+  function ensureSrc(){ if(!img)return null; if(!srcCanvas||srcCanvas.width!==img.width||srcCanvas.height!==img.height){ srcCanvas=document.createElement('canvas'); srcCanvas.width=img.width; srcCanvas.height=img.height; srcCtx=srcCanvas.getContext('2d',{willReadFrequently:true}); srcCtx.drawImage(img,0,0); } return srcCanvas; }
+  function sampleColorAt(ix,iy){ if(!ensureSrc())return null; ix=Math.round(ix); iy=Math.round(iy); if(ix<0||iy<0||ix>=img.width||iy>=img.height)return null; const d=srcCtx.getImageData(ix,iy,1,1).data; return [d[0],d[1],d[2]]; }
+
+  // Auto-detect prompts for this layout's drawing (or reuses an existing one).
+  function startDetect(){ if(active==='none')return; if(svcImgCache[active]||(services[active]&&services[active].hasImage)){ pendingOpenDetect=false; openDetect(); } else { pendingOpenDetect=true; $('detectInput').click(); } }
+  async function onDetectFile(f){ if(!f)return; showSpin(true,isPdf(f)?'Rendering PDF…':'Loading drawing…'); try{ const url=await fileToImageUrl(f); await setServiceImage(active,url,true);}catch(e){ console.warn(e); flashBar('Could not read that file'); } showSpin(false); openDetect(); pendingOpenDetect=false; }
+  function openDetect(){ if(active==='none')return; if(!img&&services[active]&&services[active].hasImage){ /* image still loading */ } pickedColor=null; $('dtSvc').textContent=svcOf(active)?svcOf(active).name:''; $('dtSwatch').style.background='transparent'; $('dtSwatch').textContent='none'; $('dtTol').value=60; $('dtTolV').textContent='60'; $('dtOcr').checked=true; $('dtErr').textContent=''; $('detectModal').classList.remove('hidden'); }
+  function startEyedrop(){ $('detectModal').classList.add('hidden'); mode='eyedrop'; cv.classList.add('picking'); showBar('Click a network line on the drawing to sample its colour. Esc = cancel.',[['Cancel',cancelEyedrop,true]]); }
+  function cancelEyedrop(){ if(mode!=='eyedrop')return; mode='idle'; cv.classList.remove('picking'); hideBar(); $('detectModal').classList.remove('hidden'); }
+  function onEyedrop(ip){ const c=sampleColorAt(ip.x,ip.y); mode='idle'; cv.classList.remove('picking'); hideBar(); if(c){ pickedColor=c; $('dtSwatch').style.background='rgb('+c[0]+','+c[1]+','+c[2]+')'; $('dtSwatch').textContent=''; } $('detectModal').classList.remove('hidden'); }
+
+  // principal-axis centreline: rotate component onto its long axis, bin along it, average each bin
+  function centerline(px,W){ const n=px.length; if(n<2)return null; const xs=new Float64Array(n),ys=new Float64Array(n); let mx=0,my=0; for(let i=0;i<n;i++){ const x=px[i]%W,y=(px[i]/W)|0; xs[i]=x;ys[i]=y;mx+=x;my+=y; } mx/=n;my/=n; let sxx=0,syy=0,sxy=0; for(let i=0;i<n;i++){ const dx=xs[i]-mx,dy=ys[i]-my; sxx+=dx*dx;syy+=dy*dy;sxy+=dx*dy; } sxx/=n;syy/=n;sxy/=n; const tr=sxx+syy,det=sxx*syy-sxy*sxy,l1=tr/2+Math.sqrt(Math.max(0,tr*tr/4-det)); let ax,ay; if(Math.abs(sxy)>1e-6){ ax=l1-syy; ay=sxy; } else { if(sxx>=syy){ax=1;ay=0;}else{ax=0;ay=1;} } const al=Math.hypot(ax,ay)||1; ax/=al;ay/=al; let tmin=Infinity,tmax=-Infinity; const ts=new Float64Array(n); for(let i=0;i<n;i++){ const t=(xs[i]-mx)*ax+(ys[i]-my)*ay; ts[i]=t; if(t<tmin)tmin=t; if(t>tmax)tmax=t; } const span=tmax-tmin; if(span<6)return null; const NB=Math.max(2,Math.min(40,Math.round(span/12))); const sx=new Float64Array(NB),sy=new Float64Array(NB),cn=new Float64Array(NB); for(let i=0;i<n;i++){ let b=Math.floor((ts[i]-tmin)/span*NB); if(b<0)b=0; if(b>=NB)b=NB-1; sx[b]+=xs[i];sy[b]+=ys[i];cn[b]++; } const poly=[]; for(let b=0;b<NB;b++){ if(cn[b]>0)poly.push({x:sx[b]/cn[b],y:sy[b]/cn[b]}); } return poly.length>=2?poly:null; }
+  const polyLen=p=>{ let L=0; for(let i=1;i<p.length;i++)L+=Math.hypot(p[i].x-p[i-1].x,p[i].y-p[i-1].y); return L; };
+
+  function detectRoutes(target,tol){ ensureSrc(); const scale=Math.min(1,1200/Math.max(img.width,img.height)); const W=Math.max(1,Math.round(img.width*scale)),H=Math.max(1,Math.round(img.height*scale)); const oc=document.createElement('canvas'); oc.width=W; oc.height=H; const ox=oc.getContext('2d',{willReadFrequently:true}); ox.drawImage(img,0,0,W,H); const data=ox.getImageData(0,0,W,H).data; const N=W*H, mask=new Uint8Array(N), tol2=tol*tol; for(let i=0;i<N;i++){ const r=data[i*4]-target[0],g=data[i*4+1]-target[1],b=data[i*4+2]-target[2]; if(r*r+g*g+b*b<=tol2)mask[i]=1; } const lbl=new Int32Array(N); const comps=[]; const stack=[]; for(let p=0;p<N;p++){ if(mask[p]&&!lbl[p]){ const px=[]; stack.length=0; stack.push(p); lbl[p]=1; while(stack.length){ const q=stack.pop(); px.push(q); const qx=q%W,qy=(q/W)|0; for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){ if(!dx&&!dy)continue; const nx=qx+dx,ny=qy+dy; if(nx<0||ny<0||nx>=W||ny>=H)continue; const np=ny*W+nx; if(mask[np]&&!lbl[np]){lbl[np]=1;stack.push(np);} } } comps.push(px); } } const minPix=Math.max(25,N*0.0001); comps.sort((a,b)=>b.length-a.length); const routes=[]; comps.forEach(px=>{ if(px.length<minPix)return; if(routes.length>=60)return; const poly=centerline(px,W); if(poly&&poly.length>=2) routes.push(poly.map(p=>({x:p.x/scale,y:p.y/scale}))); }); return {routes,oc,scale}; }
+
+  function loadTesseract(){ return new Promise(res=>{ if(typeof Tesseract!=='undefined')return res(); const s=document.createElement('script'); s.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'; s.onload=()=>res(); s.onerror=()=>res(); document.head.appendChild(s); }); }
+  function parseChainage(t){ t=String(t).replace(/[,\s]/g,''); let m=t.match(/(\d+)\+(\d{2,3})/); if(m)return parseInt(m[1],10)*1000+parseInt(m[2],10); m=t.match(/^(?:CH|KP|STA|CHAINAGE)?:?(\d{1,5}(?:\.\d+)?)$/i); if(m){ const n=parseFloat(m[1]); if(n>=0&&n<100000)return n; } return null; }
+  async function ocrChainages(canvas){ await loadTesseract(); if(typeof Tesseract==='undefined'||!canvas)return []; const res=await Tesseract.recognize(canvas,'eng'); const words=(res&&res.data&&res.data.words)||[]; const out=[]; words.forEach(w=>{ const v=parseChainage(w.text); if(v!=null&&w.bbox){ out.push({v,x:(w.bbox.x0+w.bbox.x1)/2,y:(w.bbox.y0+w.bbox.y1)/2}); } }); return out; }
+  function nearestLabel(labels,p){ let best=null,bd=Infinity; labels.forEach(l=>{ const d=Math.hypot(l.x-p.x,l.y-p.y); if(d<bd){bd=d;best=l;} }); const lim=img?Math.max(img.width,img.height)*0.12:1e9; return (best&&bd<=lim)?best:null; }
+  function assignChainage(routes,labels){ return routes.map(poly=>{ const a=poly[0],b=poly[poly.length-1]; const la=nearestLabel(labels,a),lb=nearestLabel(labels,b); let s=la?la.v:null,e=lb?lb.v:null; const L=Math.round(polyLen(poly)); if(s!=null&&e!=null){ if(s>e){const t=s;s=e;e=t;} if(e<=s)e=s+L; return {start:s,end:e}; } if(s!=null)return {start:s,end:s+L}; if(e!=null)return {start:Math.max(0,e-L),end:e}; return {start:0,end:L}; }); }
+
+  async function runDetect(){ if(!pickedColor){ $('dtErr').textContent='Pick the line colour first.'; return; } const tol=parseInt($('dtTol').value,10)||60, doOcr=$('dtOcr').checked; $('detectModal').classList.add('hidden'); showSpin(true,'Detecting lines…'); await new Promise(r=>setTimeout(r,30)); let result; try{ result=detectRoutes(pickedColor,tol); }catch(e){ console.warn(e); showSpin(false); flashBar('Detection failed on this image'); $('detectModal').classList.remove('hidden'); return; } if(!result.routes.length){ showSpin(false); $('dtErr').textContent='No lines found in that colour — try a higher tolerance.'; $('detectModal').classList.remove('hidden'); return; } let labels=[]; if(doOcr){ showSpin(true,'Reading chainages (first run downloads the OCR engine)…'); try{ labels=await ocrChainages(ensureSrc()); }catch(e){ console.warn(e); } } const chain=assignChainage(result.routes,labels); const svcN=svcOf(active)?svcOf(active).name:'Route'; detected=result.routes.map((poly,i)=>({points:poly,name:svcN+' '+(routes.length+i+1),start:chain[i].start,end:chain[i].end,include:true})); previewDetected=true; showSpin(false); render(); openReview(labels.length); }
+
+  function openReview(nLabels){ const wrap=$('rvList'); wrap.innerHTML=''; $('rvErr').textContent=''; detected.forEach(d=>{ const row=document.createElement('div'); row.className='rvrow'; const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=d.include!==false; cb.onchange=()=>{ d.include=cb.checked; render(); }; const nm=document.createElement('input'); nm.type='text'; nm.className='rvname'; nm.value=d.name; nm.oninput=()=>{ d.name=nm.value; }; const st=document.createElement('input'); st.type='number'; st.className='rvch'; st.value=Math.round(d.start); st.oninput=()=>{ d.start=parseFloat(st.value); }; const en=document.createElement('input'); en.type='number'; en.className='rvch'; en.value=Math.round(d.end); en.oninput=()=>{ d.end=parseFloat(en.value); }; row.append(cb,nm,st,en); wrap.appendChild(row); }); $('rvMsg').textContent= detected.length+' line'+(detected.length>1?'s':'')+' detected · '+(nLabels? (nLabels+' chainage label'+(nLabels>1?'s':'')+' read — check them'):'chainages not read, enter below'); $('reviewModal').classList.remove('hidden'); }
+  function minimizeReview(){ $('reviewModal').classList.add('hidden'); showBar('Reviewing '+(detected?detected.length:0)+' detected route'+((detected&&detected.length!==1)?'s':'')+' on the drawing — pan/zoom to check, then resume.',[['Resume review',resumeReview],['Add routes',commitDetected],['Cancel',cancelReview,true]]); }
+  function resumeReview(){ hideBar(); if(detected)$('reviewModal').classList.remove('hidden'); }
+  function cancelReview(){ $('reviewModal').classList.add('hidden'); hideBar(); previewDetected=false; detected=null; render(); }
+  function commitDetected(){ let added=0; const base=Date.now(); detected.forEach(d=>{ if(d.include===false)return; let s=parseFloat(d.start)||0, e=parseFloat(d.end); if(!(e>s))e=s+Math.max(1,Math.round(polyLen(d.points))); routes.push({id:'r'+base+'_'+(added),name:(d.name||'Route').trim()||'Route',start:s,end:e,points:d.points,by:userName||null,createdAt:new Date().toISOString().slice(0,10),auto:true}); added++; }); if(!added){ $('rvErr').textContent='Tick at least one route to add.'; return; } $('reviewModal').classList.add('hidden'); hideBar(); previewDetected=false; detected=null; saveData(); refreshUI(); render(); flashBar(added+' route'+(added!==1?'s':'')+' added'); }
+
+  // ---------- wire ----------
+  $('btnLoad').onclick=$('btnLoad2').onclick=()=>$('fileInput').click();
+  $('fileInput').onchange=e=>onFile(e.target.files[0]);
+  $('layer1').onchange=onLayer1; $('layer2').onchange=onLayer2; $('layer3').onchange=onLayer3;
+  $('btnRoute').onclick=async()=>{ if(await requireName()) startRoute(); }; $('btnUpdate').onclick=async()=>{ if(await requireName()) openUpdate(); }; $('btnSync').onclick=syncNow; $('btnFit').onclick=fit;
+  $('btnLabels').onclick=()=>{ showLabels=!showLabels; saveData(); refreshUI(); render(); };
+  $('btnExport').onclick=exportPng; $('btnReset').onclick=resetAll;
+  $('btnReport').onclick=openReport; $('btnCsv').onclick=exportCsv;
+  $('btnMode').onclick=toggleMode;
+  $('whoLbl').onclick=async()=>{ const n=await uiPrompt('Your name','This name is attached to the progress updates you make.',userName); if(n!=null)setUserName(n); };
+  $('qtyTarget').onchange=saveTarget; $('qtyUnit').onchange=saveTarget;
+  $('btnServices').onclick=()=>{ if(editMode) openServicePicker(false); };
+  $('btnDetect').onclick=async()=>{ if(editMode&&active!=='none'&&await requireName()) startDetect(); };
+  $('detectInput').onchange=e=>{ const f=e.target.files[0]; e.target.value=''; onDetectFile(f); };
+  $('dtChange').onclick=()=>$('detectInput').click();
+  $('dtPick').onclick=startEyedrop; $('dtCancel').onclick=()=>$('detectModal').classList.add('hidden'); $('dtRun').onclick=runDetect; $('dtTol').oninput=()=>$('dtTolV').textContent=$('dtTol').value;
+  $('rvMin').onclick=minimizeReview; $('rvCancel').onclick=cancelReview; $('rvAdd').onclick=commitDetected;
+  $('spCancel').onclick=()=>$('svcPicker').classList.add('hidden'); $('spSave').onclick=savePicker;
+  $('spAll').onclick=()=>$('spList').querySelectorAll('input[type=checkbox]').forEach(c=>c.checked=true);
+  $('spNone').onclick=()=>$('spList').querySelectorAll('input[type=checkbox]').forEach(c=>c.checked=false);
+  $('rCancel').onclick=()=>$('routeModal').classList.add('hidden'); $('rStartTrace').onclick=beginTrace;
+  $('mCancel').onclick=()=>$('modal').classList.add('hidden'); $('mSave').onclick=saveEntry; $('mPick').onclick=startPick;
+  [...$('mSide').children].forEach(b=>b.onclick=()=>setSide(b.dataset.s));
+  window.addEventListener('resize',render);
+  async function pollSync(){ if(mode!=='idle'||previewDetected)return; if(document.querySelector('.ov:not(.hidden)'))return; try{ const d=await window.storage.get(DATA_KEY,true); if(d&&d.value&&d.value!==lastDataStr){ lastDataStr=d.value; applyData(JSON.parse(d.value),true); applyDisplayed(); await loadServiceImage(active); refreshUI(); render(); flashBar('Updated from shared board'); } const im=await window.storage.get(IMG_KEY,true); if(im&&im.value&&im.value!==baseUrl) await setBaseImage(im.value,false); if(active!=='none'&&services[active]&&services[active].hasImage){ const r=await window.storage.get(imgKeyFor(active),true); if(r&&r.value&&(!svcImgCache[active]||r.value!==svcImgCache[active].url)){ const el=await loadImageEl(r.value); if(el){ svcImgCache[active]={img:el,url:r.value}; if(applyDisplayed())fit(); render(); } } } }catch(e){} }
+  setInterval(pollSync,10000);
+  renderLayoutSelectors(); loadActiveRefs(); renderWho(); applyEditMode(); loadAll();
+})();
+</script>
+
+<script>
+// ===========================================================================
+//  PROJECT SWITCHER
+//  Each project is an isolated shared board, selected by the URL hash
+//  (#project-slug). This adds a toolbar control to create projects and jump
+//  between them, remembering visited projects in this browser. It is fully
+//  self-contained and does not touch the app's internal logic.
+// ===========================================================================
+(function () {
+  const LIST_KEY = 'rpt:projectList';
+  const cur = (window.__INFRA_SYNC__ && window.__INFRA_SYNC__.board) || 'default';
+  const cloudOn = !!(window.__INFRA_SYNC__ && window.__INFRA_SYNC__.cloud);
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const load = () => { try { return JSON.parse(localStorage.getItem(LIST_KEY)) || []; } catch (e) { return []; } };
+  const save = l => { try { localStorage.setItem(LIST_KEY, JSON.stringify(l)); } catch (e) {} };
+  const slugify = s => String(s).toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+  const nameFor = (slug, l) => slug === 'default' ? 'Default project' : ((l.find(p => p.slug === slug) || {}).name || slug);
+
+  // Remember the project we're currently in.
+  let list = load();
+  if (!list.some(p => p.slug === cur)) { list.push({ slug: cur, name: cur === 'default' ? 'Default project' : cur }); save(list); }
+
+  function go(slug) {
+    const hash = (slug && slug !== 'default') ? '#' + slug : '';
+    try { history.replaceState(null, '', location.pathname + location.search + hash); }
+    catch (e) { location.hash = hash; }
+    location.reload();
+  }
+
+  // Toolbar chip.
+  const brand = document.querySelector('#topbar .brand');
+  const chip = document.createElement('button');
+  chip.style.cssText = 'display:block;width:100%;margin:6px 0 0;font-size:12px;padding:7px 10px;border-radius:8px;border:1px solid #d1d5db;background:#ffffff;color:#374151;cursor:pointer;text-align:left;font-weight:500';
+  chip.textContent = '📁 ' + nameFor(cur, list) + ' ▾';
+  brand.appendChild(chip);
+
+  // Dropdown panel.
+  const panel = document.createElement('div');
+  panel.style.cssText = 'position:fixed;z-index:60;min-width:250px;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;padding:10px;box-shadow:0 10px 30px rgba(0,0,0,.14);display:none';
+  document.body.appendChild(panel);
+
+  function buildPanel() {
+    list = load();
+    panel.innerHTML = '';
+    const head = document.createElement('div');
+    head.textContent = 'Switch project';
+    head.style.cssText = 'font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:#6b7280;margin:2px 4px 8px;font-weight:600';
+    panel.appendChild(head);
+
+    list.slice().sort((a, b) => a.name.localeCompare(b.name)).forEach(p => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer;font-size:13px;color:#1f2937';
+      row.onmouseenter = () => row.style.background = '#f3f4f6';
+      row.onmouseleave = () => row.style.background = '';
+      const label = document.createElement('span');
+      label.style.flex = '1';
+      label.innerHTML = (p.slug === cur ? '● ' : '') + esc(p.name);
+      row.appendChild(label);
+      if (p.slug !== cur) {
+        const del = document.createElement('span');
+        del.textContent = '×';
+        del.title = 'Remove from this list (the shared board itself is NOT deleted)';
+        del.style.cssText = 'color:#9aa1ac;padding:0 4px';
+        del.onclick = ev => { ev.stopPropagation(); save(load().filter(x => x.slug !== p.slug)); buildPanel(); };
+        row.appendChild(del);
+        row.onclick = () => go(p.slug);
+      }
+      panel.appendChild(row);
+    });
+
+    const hr = document.createElement('div');
+    hr.style.cssText = 'height:1px;background:#eceef1;margin:8px 4px';
+    panel.appendChild(hr);
+
+    const lbl = document.createElement('div');
+    lbl.textContent = 'New project';
+    lbl.style.cssText = 'font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:#6b7280;margin:2px 4px 6px;font-weight:600';
+    panel.appendChild(lbl);
+
+    const inp = document.createElement('input');
+    inp.placeholder = 'Project name…';
+    inp.style.cssText = 'width:100%;background:#ffffff;border:1px solid #d1d5db;border-radius:8px;color:#1f2937;padding:8px 10px;font:inherit;font-size:13px;margin-bottom:8px;box-sizing:border-box';
+    panel.appendChild(inp);
+
+    const btn = document.createElement('button');
+    btn.textContent = 'Create & open';
+    btn.style.cssText = 'width:100%;font-size:13px;padding:8px;border-radius:8px;border:1px solid #bbf7d0;background:#f0fdf4;color:#15803d;cursor:pointer;text-align:center';
+    function create() {
+      const nm = inp.value.trim(); if (!nm) return;
+      const slug = slugify(nm); if (!slug) return;
+      const nl = load();
+      if (slug !== 'default' && !nl.some(x => x.slug === slug)) { nl.push({ slug, name: nm }); save(nl); }
+      go(slug);
+    }
+    btn.onclick = create;
+    inp.onkeydown = e => { if (e.key === 'Enter') create(); };
+    panel.appendChild(btn);
+
+    const foot = document.createElement('div');
+    foot.style.cssText = 'font-size:11px;color:#6b7280;margin:9px 4px 1px';
+    foot.textContent = cloudOn ? '🟢 Live sync on — boards are shared' : '⚪ Local only — no shared sync';
+    panel.appendChild(foot);
+  }
+
+  let open = false;
+  function place() { const r = chip.getBoundingClientRect(); panel.style.left = r.left + 'px'; panel.style.top = (r.bottom + 6) + 'px'; }
+  function toggle(show) { open = show == null ? !open : show; if (open) { buildPanel(); place(); panel.style.display = 'block'; } else panel.style.display = 'none'; }
+  chip.onclick = e => { e.stopPropagation(); toggle(); };
+  document.addEventListener('click', e => { if (open && !panel.contains(e.target) && e.target !== chip) toggle(false); });
+  window.addEventListener('resize', () => { if (open) place(); });
+})();
+</script>
+</body>
+</html>

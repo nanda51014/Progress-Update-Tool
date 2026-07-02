@@ -1,98 +1,79 @@
 # Infrastructure Progress Layout
 
-A single-file browser tool for tracking construction/infrastructure progress on a project layout drawing.
+Log construction progress by chainage, directly on the project layout drawing. A single-file web tool for roads and infrastructure sites: trace or auto-detect your alignments, record each completed activity from CH to CH (LHS / RHS / both), and share one live board across the team — covering 30 wet, dry, road and structures service layers.
 
-Load your project layout image, pick a service (roadworks, pipe laying, ducts, chambers, etc.), trace routes along the drawing, then log progress by chainage and completed activity. Each service keeps its own routes and progress on the same base drawing.
+**Rev 03 · 02-Jul-26**
 
-## Features
+## Repo contents
 
-- Load any layout drawing as the base — image **or PDF** (first page is rendered)
-- Layered **Layout** selector — drill down by category (Earthworks, Wet Services, Dry Services, Road Works, Structures) → type (Pipe Laying, Chambers, Cable/Duct, Carriageway, Footpath…) → discipline (Storm Water, Sewer, CCTV, Street Lighting…)
-- **Per-project service scope** — when a project is created you tick which services it actually contains (road, storm water, sewer, bridge…); only those appear in the Layout selector. Change the scope anytime via **Services…**
-- Trace routes by clicking along the centreline, with chainage stationing
-- **Auto-detect routes** from a drawing where the network lines are a distinct colour: Auto-detect prompts you to upload a drawing for that layout, then you pick the line colour and it traces each line into a route automatically (best-effort OCR pre-fills chainages; a review step — which can be minimized to inspect the traces on the drawing — lets you confirm). Each layout can have its own uploaded drawing; the base "Load drawing" is the fallback.
-- Log progress per route, per side (LHS/RHS/Both for dual-carriageway services), per activity stage
-- Colour-coded progress overlay and per-stage / overall percentage summaries
-- **Installed quantity vs. target** per layer — set a target (e.g. 2,400 m of pipe, 35 manholes) and see how much is fully complete against it
-- **Roles & audit trail** — a per-browser View/Edit mode (viewers can't change data), and every progress entry is stamped with who logged it
-- **Reporting** — one-click printable PDF report (summary, per-activity/route tables, annotated drawing, progress log) and a CSV export of all entries for Excel
-- Export the annotated drawing as PNG
-- Export / import the whole board as a JSON file
-- **Shared multi-user syncing** via Firebase — everyone on the same board sees each other's routes and progress
-- Falls back to per-browser `localStorage` when no backend is configured
+| File | What it is |
+|---|---|
+| `index.html` | Landing page (served automatically by GitHub Pages) |
+| `app.html` | The tool itself — one self-contained HTML file |
+| `database.rules.json` | Starter Firebase Realtime Database rules |
+| `README.md` | This file |
 
-## Hosting
+## Quick start (local, no setup)
 
-This is a static site — just `index.html` with everything inlined (no build step, no dependencies).
+Open `app.html` in a browser. With no Firebase config, the tool runs in **local mode**: everything is saved in that browser's localStorage. No accounts, no server, works offline. Full functionality except multi-user sync.
 
-### GitHub Pages
+## Deploy on GitHub Pages
 
-1. Push this repo to GitHub.
-2. Go to **Settings → Pages**.
-3. Under **Build and deployment**, set **Source** to *Deploy from a branch*, pick the `main` branch and the `/ (root)` folder, then **Save**.
-4. Your site will be live at `https://<username>.github.io/<repo>/` within a minute or two.
+1. Fork/clone this repo.
+2. Repo → Settings → Pages → deploy from the `main` branch, root folder.
+3. `https://<user>.github.io/<repo>/` serves the landing page; the tool is at `/app.html`.
 
-## Shared multi-user syncing (Firebase)
+## Team sync (Firebase)
 
-To let multiple people share the same live board, the tool uses a **Firebase Realtime Database** backend. It's free for this scale and takes about 5 minutes to set up. Until you add a config, the tool runs in local-only mode (per-browser, no sharing).
+Shared live boards need a free Firebase Realtime Database:
 
-### 1. Create a Firebase project
+1. [Firebase console](https://console.firebase.google.com) → create a project → Build → **Realtime Database** → create.
+2. Project settings → Your apps → add a **Web app** → copy the SDK config object.
+3. Paste the values into the `firebaseConfig` block near the top of `app.html` (replacing the `PASTE_…` placeholders).
+4. **Apply database rules before sharing the link** — see below.
 
-1. Go to <https://console.firebase.google.com/> and **Add project** (any name). You can skip Google Analytics.
-2. In the left sidebar open **Build → Realtime Database → Create Database**.
-   - Pick a location.
-   - Start in **test mode** (or use the rules below).
+Everyone opening the same URL shares the same board. Separate projects live under URL hashes (`app.html#r2200`, `app.html#sector-6`) and are switchable from the toolbar's project menu.
 
-### 2. Set the database rules
+## Securing the shared board — read this before publishing
 
-In **Realtime Database → Rules**, paste this and **Publish**:
+The Firebase config values in `app.html` are **public by design**; hiding them provides no security. Access control lives entirely in your **database rules**. If you publish this page with the Firebase console's default open rules, anyone who finds the URL can read and overwrite every board.
 
-```json
-{
-  "rules": {
-    ".read": true,
-    ".write": true
-  }
-}
-```
+`database.rules.json` in this repo is a minimal starter: it confines the app to the `boards/` branch and caps write size. Paste it in Firebase console → Realtime Database → Rules → Publish.
 
-> ⚠️ These rules make the board **publicly readable and writable by anyone who has your site URL**. That's fine for an internal team tool, but don't put confidential data in it. To lock it down later, add Firebase Authentication and tighten the rules.
+For anything beyond a small trusted team, tighten further — options in increasing order of effort:
 
-### 3. Get your web config
+- **Unguessable board IDs**: use a long random hash per project (`app.html#r2200-x7k2p9…`) instead of guessable names. Cheap, and stops casual discovery, but the data is still world-writable to anyone with the link.
+- **Firebase Anonymous Auth + `auth != null` rules**: one-line sign-in, blocks raw REST scraping.
+- **Email/Google sign-in with an allow-list**: proper access control; requires adding a small auth flow to the app.
 
-1. In **Project settings** (gear icon) → **General** → scroll to **Your apps** → click the **Web** icon (`</>`) to register a web app (any nickname; you do *not* need Firebase Hosting).
-2. Copy the `firebaseConfig` object it shows you.
+Also note: whatever drawing you load is stored (as an image) in the database. Don't put confidential drawings on a board whose rules you haven't locked down.
 
-### 4. Paste it into `index.html`
+## Using the tool
 
-Near the top of `index.html` find the `const firebaseConfig = { ... }` block and replace the `PASTE_…` placeholders with your real values (make sure `databaseURL` is included — it's the `https://…firebaseio.com` one). Commit and push.
+1. **Services…** — tick the services in this project's scope; only those appear in the Layout selector.
+2. **Load drawing** — image or PDF (first page rendered). Each service layer can carry its own drawing; the base drawing is the fallback.
+3. **+ Add route** — name, start/end chainage, then click along the centreline (`Enter` finishes, `Esc` cancels). Or **Auto-detect routes**: pick the network line colour on the drawing and review what it finds; OCR reads chainage labels best-effort.
+4. **Update progress** — route, side, from/to chainage (typed or picked on the drawing), completed activity. Progress is stage-weighted: each metre earns credit for every stage it has passed.
+5. **Outputs** — annotated PNG with title strip and legend, printable report (all-layers summary + active-layer detail + full log), CSV of every entry across all layers.
 
-That's it — open the published site in two browsers and you'll see progress sync between them.
+Editing/Viewing mode toggle protects the board from accidental edits; every route and entry is attributed by name.
 
-### Multiple projects (separate boards)
+## Rev history
 
-The tool is reusable across many projects from the **same hosted site** — no need to copy or redeploy. Each project is an isolated shared board.
+**Rev 03 — 02-Jul-26**
+- Pinch-zoom on touch devices (tablet/site use); two-finger gesture alongside wheel zoom and drag pan.
+- Keyboard: `Esc` cancels tracing/picking/eyedrop or closes the top modal; `Enter` finishes a trace.
+- Delete-entry now asks for confirmation (was one click, permanent, on a shared board).
+- PNG export gains a title strip: layer, overall %, board, cut-off date, author, stage legend — deck-ready without editing.
+- All user-facing dates in DD-MMM-YY (log, report, CSV); ISO retained internally and in filenames for sorting.
+- Update-progress dialog shows the selected route's chainage range.
+- Rev/date marker in the toolbar.
+- Firebase config replaced with placeholders for public release; security guidance and starter rules added.
 
-Use the **📁 project switcher** in the toolbar (next to the title) to:
+**Rev 02** — per-service drawings, auto-detect routes (colour + OCR), project scope picker, multi-project boards via URL hash, edit/view modes, installed-quantity targets, all-layer PDF report, CSV export.
 
-- See which project you're currently in
-- **Create a new project** (starts completely blank — your own "raw" copy)
-- Jump between projects you've opened before
+**Rev 01** — base tool: trace routes, chainage-based stage logging, LHS/RHS carriageway split, shared Firebase sync, PNG export.
 
-Under the hood each project is just a URL hash, so you can also share a direct link to a specific project:
+## License
 
-- `https://<user>.github.io/<repo>/` — the **Default project**
-- `https://<user>.github.io/<repo>/#marina-towers`
-- `https://<user>.github.io/<repo>/#site-b`
-
-Everyone who opens the **same link** collaborates on that board; different projects never mix. Share each project's link with the people who should work on it. The switcher remembers projects per-browser; removing one from the list does **not** delete the shared board — anyone with the link can still open it.
-
-## How sync behaves
-
-- Changes you make are written to the cloud immediately.
-- Other users' changes appear within about 10 seconds (the app polls), or instantly when they press **Sync**.
-- A `localStorage` mirror is kept as an offline fallback, and **Export data / Import data** still works for manual backups or moving a board as a file.
-
-## Notes
-
-The original code was authored inside the Claude Artifacts runtime, which provides a `window.storage` API for saving. For standalone hosting that API is reimplemented on top of Firebase (shared) with a `localStorage` fallback (local), so the same save/sync logic works on a normal website.
+MIT — use it on your jobs.
